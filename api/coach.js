@@ -9,8 +9,8 @@
 // If both keys are set, the other one is used automatically as a fallback
 // if the preferred provider errors out (e.g. free-tier rate limit hit).
 
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest"; 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 const SYSTEM_PROMPT = `You are Cadence Coach, a warm, direct personal growth and health coach built into a
 daily task app. You are given the user's actual task data (today's tasks with status, running stats,

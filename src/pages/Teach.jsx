@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Plus, X, Trash2, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users } from "lucide-react";
+import { Plus, X, Trash2, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
-import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS } from "../lib/constants";
+import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS, CONCEPT_TAGS, CONCEPT_TAG_LABELS, CONCEPT_TAG_TITLES } from "../lib/constants";
 import * as db from "../lib/db";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
@@ -133,13 +133,22 @@ function AttendancePanel({ userId, classes }) {
 
   useEffect(() => { (async () => { if (classId) setRecord(await db.fetchAttendance(userId, classId, date)); })(); }, [userId, classId, date]);
 
-  const toggle = async (studentId) => {
-    const present = { ...(record?.present || {}), [studentId]: !(record?.present || {})[studentId] };
-    const saved = await db.upsertAttendance(userId, classId, date, present);
+  // Working day default: everyone present unless explicitly marked absent.
+  const present = record?.present || {};
+  const isDayOff = !!record?.is_day_off;
+  const isPresent = (studentId) => present[studentId] !== false;
+
+  const toggleAbsent = async (studentId) => {
+    const next = { ...present, [studentId]: isPresent(studentId) ? false : true };
+    const saved = await db.upsertAttendance(userId, classId, date, next, false);
     setRecord(saved);
   };
-  const present = record?.present || {};
-  const presentCount = cls ? cls.students.filter((s) => present[s.id]).length : 0;
+  const toggleDayOff = async () => {
+    const saved = await db.upsertAttendance(userId, classId, date, present, !isDayOff);
+    setRecord(saved);
+  };
+
+  const presentCount = cls ? cls.students.filter((s) => isPresent(s.id)).length : 0;
 
   return (
     <div>
@@ -148,18 +157,69 @@ function AttendancePanel({ userId, classes }) {
           <div><div className="field-label">Class</div><ClassPicker classes={classes} value={classId} onChange={setClassId} /></div>
           <div><div className="field-label">Date</div><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></div>
         </div>
+        <div className="toggle-row">
+          <div><div className="toggle-label">Day off</div><div className="toggle-sub">No attendance taken for this date</div></div>
+          <div className={`switch ${isDayOff ? "on" : ""}`} onClick={toggleDayOff}><div className="switch-knob" /></div>
+        </div>
       </div>
-      {cls && (
+      {cls && isDayOff && <div className="card"><div className="empty">Marked as a day off \u2014 no attendance for {date}.</div></div>}
+      {cls && !isDayOff && (
         <div className="card">
-          <div className="card-title-row"><div className="card-title" style={{ marginBottom: 0 }}>Attendance</div><div className="card-sub">{presentCount}/{cls.students.length} present</div></div>
+          <div className="card-title-row"><div className="card-title" style={{ marginBottom: 0 }}>Attendance</div><div className="card-sub">{presentCount}/{cls.students.length} present \u00b7 everyone present by default</div></div>
           {cls.students.map((s) => (
-            <label key={s.id} className={`attendance-row ${present[s.id] ? "present" : "absent"}`}>
+            <label key={s.id} className={`attendance-row ${isPresent(s.id) ? "present" : "absent"}`}>
               <span>{s.name}</span>
-              <input type="checkbox" checked={!!present[s.id]} onChange={() => toggle(s.id)} />
+              <input type="checkbox" checked={!isPresent(s.id)} onChange={() => toggleAbsent(s.id)} />
             </label>
           ))}
+          <div className="legend">checkbox marks a student absent \u2014 unchecked means present</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ---------- absences & concepts missed ---------- */
+
+function AbsencePanel({ userId, classes }) {
+  const [classId, setClassId] = useState(classes[0]?.id || "");
+  useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const cls = classes.find((c) => c.id === classId);
+
+  useEffect(() => {
+    (async () => {
+      if (!classId || !cls) return;
+      setLoading(true);
+      const studentsById = Object.fromEntries(cls.students.map((s) => [s.id, s.name]));
+      setRows(await db.fetchAbsenceConceptReport(userId, classId, studentsById));
+      setLoading(false);
+    })();
+  }, [userId, classId, cls]);
+
+  return (
+    <div>
+      <div className="card">
+        <div className="field-label">Class</div>
+        <ClassPicker classes={classes} value={classId} onChange={setClassId} />
+      </div>
+      <div className="card">
+        <div className="card-title">Absences & concepts missed</div>
+        {loading ? <div className="card-sub">Loading\u2026</div> : rows.length === 0 ? (
+          <div className="card-sub">No absences recorded for this class yet.</div>
+        ) : rows.map((r, i) => (
+          <div className="marks-row" key={i}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{r.studentName}</div>
+              <div className="card-sub mono">{r.date}</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 12.5, color: r.chapter ? "#33302B" : "#9c9488", maxWidth: 160 }}>
+              {r.chapter || "No lesson logged"}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -242,7 +302,11 @@ function PerformancePanel({ userId, classes }) {
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState(""); const [testType, setTestType] = useState("CT"); const [maxMarks, setMaxMarks] = useState(20);
+  const [chapterCount, setChapterCount] = useState("");
+  const [exercises, setExercises] = useState("");
+  const [conceptsInput, setConceptsInput] = useState("");
   const [records, setRecords] = useState([]);
+  const [expanded, setExpanded] = useState({});
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => { if (classId) setRecords(await db.fetchPerformanceRecords(userId, classId)); }, [userId, classId]);
@@ -250,13 +314,24 @@ function PerformancePanel({ userId, classes }) {
 
   const createRecord = async () => {
     if (!title.trim() || !cls) return;
-    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks));
-    setTitle(""); setCreating(false); load();
+    let concepts = conceptsInput.split(",").map((c) => c.trim()).filter(Boolean);
+    if (concepts.length === 0) {
+      concepts = await db.fetchPlannerChapters(userId, classId); // fall back to everything logged in the planner
+    }
+    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts);
+    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setCreating(false);
+    load();
   };
   const setMark = async (record, studentId, val) => {
     const marks = { ...record.marks, [studentId]: val === "" ? null : Number(val) };
     await db.updatePerformanceMarks(record.id, marks);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+  };
+  const cycleConceptTag = async (record, concept, studentId) => {
+    const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
+    const next = CONCEPT_TAGS[(CONCEPT_TAGS.indexOf(cur) + 1) % CONCEPT_TAGS.length];
+    const conceptMarks = await db.updateConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); };
   const average = (r) => {
@@ -280,6 +355,12 @@ function PerformancePanel({ userId, classes }) {
             </div>
             <div className="field-label">Max marks</div>
             <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
+            <div className="field-label">Number of chapters involved</div>
+            <input type="number" min="0" className="input" placeholder="e.g. 2" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
+            <div className="field-label">Exercises (optional)</div>
+            <input className="input" placeholder="e.g. Ex 3.1, 3.2" value={exercises} onChange={(e) => setExercises(e.target.value)} />
+            <div className="field-label">Concepts covered (optional, comma-separated)</div>
+            <input className="input" placeholder="Leave blank to pull every concept logged in the Planner for this class" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={createRecord}>Create</button>
@@ -287,20 +368,51 @@ function PerformancePanel({ userId, classes }) {
           </>
         )}
       </div>
-      {cls && records.map((r) => (
-        <div className="card" key={r.id}>
-          <div className="card-title-row">
-            <div><div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div><div className="card-sub">Out of {r.max_marks} \u00b7 Class avg {average(r)}</div></div>
-            <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
-          </div>
-          {cls.students.map((s) => (
-            <div className="marks-row" key={s.id}>
-              <span>{s.name}</span>
-              <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[s.id] ?? ""} onChange={(e) => setMark(r, s.id, e.target.value)} placeholder="\u2013" />
+      {cls && records.map((r) => {
+        const isOpen = !!expanded[r.id];
+        return (
+          <div className="card" key={r.id}>
+            <div className="card-title-row">
+              <div>
+                <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div>
+                <div className="card-sub">Out of {r.max_marks} \u00b7 Class avg {average(r)}{r.chapter_count ? ` \u00b7 ${r.chapter_count} chapters` : ""}</div>
+                {r.exercises && <div className="card-sub">Exercises: {r.exercises}</div>}
+              </div>
+              <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
             </div>
-          ))}
-        </div>
-      ))}
+            {cls.students.map((s) => (
+              <div className="marks-row" key={s.id}>
+                <span>{s.name}</span>
+                <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[s.id] ?? ""} onChange={(e) => setMark(r, s.id, e.target.value)} placeholder="\u2013" />
+              </div>
+            ))}
+            {(r.concepts || []).length > 0 && (
+              <>
+                <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>
+                  {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Concept breakdown
+                </button>
+                {isOpen && r.concepts.map((concept) => (
+                  <div className="concept-block" key={concept}>
+                    <div className="concept-block-title">{concept}</div>
+                    <div className="grid-table">
+                      {cls.students.map((s) => {
+                        const tag = r.concept_marks?.[s.id]?.[concept] || "blank";
+                        return (
+                          <button key={s.id} className={`grid-cell tag-${tag}`} title={CONCEPT_TAG_TITLES[tag]} onClick={() => cycleConceptTag(r, concept, s.id)}>
+                            <span className="grid-cell-name">{s.name}</span>
+                            <span className="grid-cell-code">{CONCEPT_TAG_LABELS[tag]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {isOpen && <div className="legend">tap to cycle \u00b7 accurate \u2192 application gap \u2192 silly mistake \u2192 concept gap</div>}
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -317,6 +429,7 @@ export default function Teach({ userId, classes, reloadClasses }) {
           { value: "attendance", label: "Attendance", icon: ClipboardCheck },
           { value: "correction", label: "Correction", icon: Check },
           { value: "performance", label: "Scores", icon: BarChart3 },
+          { value: "absences", label: "Absences", icon: UserX },
           { value: "classes", label: "Classes", icon: Users },
         ]}
         value={sub} onChange={setSub}
@@ -325,6 +438,7 @@ export default function Teach({ userId, classes, reloadClasses }) {
       {sub === "attendance" && <AttendancePanel userId={userId} classes={classes} />}
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} />}
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} />}
+      {sub === "absences" && <AbsencePanel userId={userId} classes={classes} />}
       {sub === "classes" && <ClassesPanel userId={userId} classes={classes} reloadClasses={reloadClasses} />}
     </div>
   );

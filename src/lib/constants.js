@@ -13,6 +13,14 @@ export const TEST_TYPES = ["CT", "IA-1", "IA-2", "Term"];
 export const CORRECTION_CODES = ["blank", "done", "ab", "ic"];
 export const CORRECTION_LABELS = { blank: "\u2013", done: "\u2713", ab: "ab", ic: "ic" };
 
+// per-student, per-concept tag cycled on the performance grid
+export const CONCEPT_TAGS = ["blank", "accurate", "application", "silly", "gap"];
+export const CONCEPT_TAG_LABELS = { blank: "\u2013", accurate: "\u2713", application: "App", silly: "Silly", gap: "Gap" };
+export const CONCEPT_TAG_TITLES = {
+  blank: "Not marked", accurate: "Accurate", application: "Application gap",
+  silly: "Silly mistake", gap: "Concept gap",
+};
+
 export const SEED_TASKS = [
   { title: "Morning workout", category: "gym", time: "07:00", duration_min: 45, anchored: true, important: true,
     exercises: [{ name: "Squat", sets: [{ reps: 8, weight: 40 }, { reps: 8, weight: 40 }] }] },

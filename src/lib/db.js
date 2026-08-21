@@ -191,12 +191,50 @@ export async function fetchAttendanceRange(userId, fromDate, toDate) {
   if (error) throw error;
   return data || [];
 }
-export async function upsertAttendance(userId, classId, date, present) {
+export async function upsertAttendance(userId, classId, date, present, isDayOff = false) {
   const { data, error } = await supabase.from("attendance_records")
-    .upsert({ user_id: userId, class_id: classId, date, present }, { onConflict: "class_id,date" })
+    .upsert({ user_id: userId, class_id: classId, date, present, is_day_off: isDayOff }, { onConflict: "class_id,date" })
     .select().single();
   if (error) throw error;
   return data;
+}
+export async function fetchAllAttendanceForClass(userId, classId) {
+  const { data, error } = await supabase.from("attendance_records").select("*").eq("user_id", userId).eq("class_id", classId).order("date", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+/** Every date a given class had a lesson logged, mapped to its chapter/concept. */
+export async function fetchPlannerChapterMap(userId, classId) {
+  const { data, error } = await supabase.from("planner_entries").select("date, chapter").eq("user_id", userId).eq("class_id", classId);
+  if (error) throw error;
+  const map = {};
+  for (const row of data || []) if (row.chapter) map[row.date] = row.chapter;
+  return map;
+}
+/** Distinct chapters logged for a class \u2014 used to auto-fill test concepts when none are given. */
+export async function fetchPlannerChapters(userId, classId) {
+  const { data, error } = await supabase.from("planner_entries").select("chapter").eq("user_id", userId).eq("class_id", classId);
+  if (error) throw error;
+  const seen = new Set();
+  for (const row of data || []) if (row.chapter?.trim()) seen.add(row.chapter.trim());
+  return [...seen];
+}
+/** Absences cross-referenced with the concept/chapter taught that day. */
+export async function fetchAbsenceConceptReport(userId, classId, studentsById) {
+  const [records, chapterMap] = await Promise.all([
+    fetchAllAttendanceForClass(userId, classId),
+    fetchPlannerChapterMap(userId, classId),
+  ]);
+  const rows = [];
+  for (const r of records) {
+    if (r.is_day_off) continue;
+    for (const [studentId, present] of Object.entries(r.present || {})) {
+      if (present === false) {
+        rows.push({ date: r.date, studentId, studentName: studentsById[studentId] || "Unknown", chapter: chapterMap[r.date] || null });
+      }
+    }
+  }
+  return rows.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /* ---------- teaching: correction records ---------- */
@@ -232,15 +270,26 @@ export async function fetchAllPerformanceRecords(userId) {
   if (error) throw error;
   return data || [];
 }
-export async function createPerformanceRecord(userId, classId, title, testType, maxMarks) {
+export async function createPerformanceRecord(userId, classId, title, testType, maxMarks, chapterCount, exercises, concepts) {
   const { data, error } = await supabase.from("performance_records")
-    .insert({ user_id: userId, class_id: classId, title, test_type: testType, max_marks: maxMarks, marks: {} }).select().single();
+    .insert({
+      user_id: userId, class_id: classId, title, test_type: testType, max_marks: maxMarks,
+      chapter_count: chapterCount || null, exercises: exercises || null,
+      concepts: concepts || [], marks: {}, concept_marks: {},
+    }).select().single();
   if (error) throw error;
   return data;
 }
 export async function updatePerformanceMarks(id, marks) {
   const { error } = await supabase.from("performance_records").update({ marks }).eq("id", id);
   if (error) throw error;
+}
+export async function updateConceptMark(id, currentConceptMarks, studentId, concept, tag) {
+  const conceptMarks = { ...currentConceptMarks };
+  conceptMarks[studentId] = { ...(conceptMarks[studentId] || {}), [concept]: tag };
+  const { error } = await supabase.from("performance_records").update({ concept_marks: conceptMarks }).eq("id", id);
+  if (error) throw error;
+  return conceptMarks;
 }
 export async function deletePerformanceRecord(id) {
   const { error } = await supabase.from("performance_records").delete().eq("id", id);

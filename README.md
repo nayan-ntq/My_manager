@@ -54,3 +54,23 @@ Click Deploy. You'll get a live URL. Sign up for an account in the app itself
 ## Custom domain
 Works with zero code changes — add it under Vercel → Domains, point your
 registrar's DNS at it, SSL is automatic.
+
+## Recent update: attendance day-off + concept-based test scoring
+
+- **Attendance** now defaults every student to present; you only tap to mark
+  exceptions absent. A "Day off" switch skips attendance entirely for a date.
+- **Test creation** now asks for number of chapters and (optionally) exercises
+  and specific concepts. Leave concepts blank and it auto-pulls every chapter
+  logged in that class's Planner.
+- Each test now has an expandable **concept breakdown** grid — tap a cell to
+  cycle a student through Accurate / Application gap / Silly mistake / Concept
+  gap, per concept.
+- New **Absences** tab cross-references who was absent on which date with
+  whatever chapter was logged in the Planner for that date.
+
+This required one additional Supabase migration (already applied to your live
+project): `attendance_records.is_day_off`, and
+`performance_records.concepts` / `concept_marks` / `chapter_count` / `exercises`.
+If you ever recreate the Supabase project from scratch, re-run
+`supabase/schema.sql` first, then this migration is baked into the schema
+already if you're copying it fresh — no separate step needed there.
