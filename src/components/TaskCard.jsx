@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Clock, Lock, Star, ChevronRight, ChevronDown, Trash2, Check, SkipForward } from "lucide-react";
+import { Clock, Lock, Star, ChevronRight, ChevronDown, Check, SkipForward } from "lucide-react";
+import ConfirmDelete from "./ConfirmDelete";
 import { CATEGORIES } from "../lib/constants";
 import PhotoStrip from "./PhotoStrip";
 
@@ -24,7 +25,7 @@ export default function TaskCard({
         <div className="task-time"><Clock size={12} />{fmtTime(task.effectiveStart)}{task.anchored && <Lock size={11} style={{ marginLeft: 2, opacity: 0.6 }} />}</div>
         <div style={{ display: "flex", gap: 6 }}>
           <button className="btn btn-icon" onClick={() => onEdit(task)}><ChevronRight size={14} /></button>
-          <button className="btn btn-icon" onClick={() => onDelete(task.id)}><Trash2 size={14} /></button>
+          <ConfirmDelete onConfirm={() => onDelete(task.id)} size={14} />
         </div>
       </div>
       <div className="task-title-row">{task.important && <Star size={13} color="#F2790C" fill="#F2790C" />}<span className={`task-title ${isDone || isSkipped ? "strike" : ""}`}>{task.title}</span></div>
@@ -56,7 +57,7 @@ export default function TaskCard({
                 <div className="set-row set-row-header"><span>Set</span><span>Reps</span><span>Weight</span><span /></div>
                 {ex.sets.map((s, si) => (
                   <div className={`set-row ${s.done ? "set-done" : ""}`} key={s.id || si}>
-                    <span className="set-num">{si + 1}</span><span className="set-static">{s.reps || "\u2014"}</span><span className="set-static">{s.weight || "\u2014"} kg</span>
+                    <span className="set-num">{si + 1}</span><span className="set-static">{s.reps || " - "}</span><span className="set-static">{s.weight || " - "} kg</span>
                     <button className={`btn btn-icon set-check ${s.done ? "on" : ""}`} onClick={() => onToggleSet(s)}><Check size={12} /></button>
                   </div>
                 ))}

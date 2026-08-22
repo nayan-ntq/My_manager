@@ -64,7 +64,7 @@ export default function AddTaskSheet({ editingTask, onClose, onSubmit, onDelete 
           <div className={`switch ${form.anchored ? "on" : ""}`} onClick={() => setForm({ ...form, anchored: !form.anchored })}><div className="switch-knob" /></div>
         </div>
         <div className="toggle-row">
-          <div><div className="toggle-label">Important</div><div className="toggle-sub">Counts toward streak · earns more points</div></div>
+          <div><div className="toggle-label">Important</div><div className="toggle-sub">Counts toward streak, earns more points</div></div>
           <div className={`switch ${form.important ? "on" : ""}`} onClick={() => setForm({ ...form, important: !form.important })}><div className="switch-knob" /></div>
         </div>
 

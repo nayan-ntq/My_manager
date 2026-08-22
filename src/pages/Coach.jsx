@@ -24,7 +24,7 @@ export default function Coach({ userId, stats }) {
     setMessages(next);
     setLoading(true);
     try {
-      // Full app snapshot only needs to be pulled and sent once per conversation \u2014
+      // Full app snapshot only needs to be pulled and sent once per conversation  - 
       // the model keeps it in context for the rest of the thread.
       const context = messages.length === 0 ? await db.fetchFullAppData(userId) : undefined;
       const res = await fetch("/api/coach", {
@@ -60,7 +60,7 @@ export default function Coach({ userId, stats }) {
         <div ref={scrollRef} />
       </div>
       <div className="chat-input-row">
-        <input className="input" placeholder="Ask anything\u2026" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
+        <input className="input" placeholder="Ask anything..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
         <button className="btn btn-primary" style={{ padding: "0 16px" }} onClick={() => send()} disabled={loading}><Send size={16} /></button>
       </div>
     </div>

@@ -43,7 +43,7 @@ export default function Auth() {
           {error && <div className="auth-error">{error}</div>}
           {notice && <div className="auth-notice">{notice}</div>}
           <button className="btn btn-primary" style={{ width: "100%", marginTop: 18 }} disabled={loading}>
-            {loading ? "Please wait\u2026" : mode === "signup" ? "Create account" : "Sign in"}
+            {loading ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}
           </button>
         </form>
         <button type="button" className="auth-switch" onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(null); setNotice(null); }}>

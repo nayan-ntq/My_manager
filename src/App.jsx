@@ -6,6 +6,8 @@ import Teach from "./pages/Teach";
 import Insights from "./pages/Insights";
 import Coach from "./pages/Coach";
 import Auth from "./pages/Auth";
+import Spinner from "./components/Spinner";
+import { ToastHost } from "./components/Toast";
 import * as db from "./lib/db";
 
 export default function App() {
@@ -48,14 +50,15 @@ export default function App() {
     if (session?.user) db.saveMeta(session.user.id, patch);
   };
 
-  if (session === undefined) return <div className="loading-screen">loading\u2026</div>;
+  if (session === undefined) return <Spinner fullPage />;
   if (!session) return <Auth />;
-  if (!ready) return <div className="loading-screen">setting things up\u2026</div>;
+  if (!ready) return <Spinner fullPage label="Setting things up..." />;
 
   const userId = session.user.id;
 
   return (
     <div className="app-shell">
+      <ToastHost />
       <div className="top-bar">
         <div className="top-left">
           <div className="logo-mark"><span className="logo-letter">M</span><span className="logo-bar" /></div>

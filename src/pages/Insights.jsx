@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Flame } from "lucide-react";
+import Spinner from "../components/Spinner";
 import * as db from "../lib/db";
 
 function addDays(d, n) { const c = new Date(d); c.setDate(c.getDate() + n); return c; }
@@ -55,7 +56,7 @@ export default function Insights({ userId, stats, classes }) {
     return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
   })();
 
-  if (loading) return <div className="page"><div className="empty">Loading insights\u2026</div></div>;
+  if (loading) return <div className="page"><Spinner label="Loading insights..." /></div>;
 
   return (
     <div className="page">
@@ -63,8 +64,8 @@ export default function Insights({ userId, stats, classes }) {
       <div className="stat-grid">
         <div className="stat-card"><div className="stat-num orange"><Flame size={17} style={{ marginBottom: -3 }} /> {stats.streak}</div><div className="stat-label">Streak</div></div>
         <div className="stat-card"><div className="stat-num">{consistency}%</div><div className="stat-label">Task consistency</div></div>
-        <div className="stat-card"><div className="stat-num">{attendanceRate ?? "\u2014"}{attendanceRate !== null && "%"}</div><div className="stat-label">Class attendance (7d)</div></div>
-        <div className="stat-card"><div className="stat-num">{avgScore ?? "\u2014"}{avgScore !== null && "%"}</div><div className="stat-label">Avg test score</div></div>
+        <div className="stat-card"><div className="stat-num">{attendanceRate ?? " - "}{attendanceRate !== null && "%"}</div><div className="stat-label">Class attendance (7d)</div></div>
+        <div className="stat-card"><div className="stat-num">{avgScore ?? " - "}{avgScore !== null && "%"}</div><div className="stat-label">Avg test score</div></div>
       </div>
       <div className="card">
         <div className="card-title">Weekly task completion</div>
@@ -80,7 +81,7 @@ export default function Insights({ userId, stats, classes }) {
       <div className="card">
         <div className="card-title">Classes</div>
         {classes.length === 0 ? <div className="card-sub">No classes added yet.</div> : classes.map((c) => (
-          <div key={c.id} className="planner-field"><b>{c.name}</b> \u2014 {c.students.length} students</div>
+          <div key={c.id} className="planner-field"><b>{c.name}</b>  -  {c.students.length} students</div>
         ))}
       </div>
     </div>

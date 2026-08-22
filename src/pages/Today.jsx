@@ -1,8 +1,10 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { Plus } from "lucide-react";
+import { Plus, CalendarClock } from "lucide-react";
 import TaskCard from "../components/TaskCard";
 import AddTaskSheet from "../components/AddTaskSheet";
 import { DateStrip } from "../components/Shared";
+import Spinner from "../components/Spinner";
+import { toast } from "../components/Toast";
 import { computeSchedule } from "../lib/schedule";
 import * as db from "../lib/db";
 
@@ -55,7 +57,7 @@ export default function Today({ userId, stats, onStatsChange, now }) {
 
   const skipTask = async (task) => { await db.setTaskStatus(task.id, "skipped"); setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "skipped" } : t)); };
   const resetTask = async (task) => { await db.setTaskStatus(task.id, "pending", null); setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "pending", actual_start: null } : t)); };
-  const deleteTaskRow = async (id) => { await db.deleteTask(id); setTasks((prev) => prev.filter((t) => t.id !== id)); };
+  const deleteTaskRow = async (id) => { await db.deleteTask(id); setTasks((prev) => prev.filter((t) => t.id !== id)); toast("Task deleted"); };
   const toggleSub = async (sub) => { await db.toggleSubtask(sub.id, !sub.done); setTasks((prev) => prev.map((t) => ({ ...t, subtasks: t.subtasks.map((s) => s.id === sub.id ? { ...s, done: !s.done } : s) }))); };
   const toggleSet = async (set) => { await db.updateSet(set.id, { done: !set.done }); setTasks((prev) => prev.map((t) => ({ ...t, exercises: t.exercises.map((e) => ({ ...e, sets: e.sets.map((s) => s.id === set.id ? { ...s, done: !s.done } : s) })) }))); };
 
@@ -78,6 +80,7 @@ export default function Today({ userId, stats, onStatsChange, now }) {
     }
     setShowForm(false);
     await load();
+    toast(editingTask ? "Task updated" : "Task added");
   };
 
   return (
@@ -88,9 +91,12 @@ export default function Today({ userId, stats, onStatsChange, now }) {
         <div className="level-track"><div className="level-fill" style={{ width: `${levelProgress}%` }} /></div>
       </div>
       {loading ? (
-        <div className="empty">Loading\u2026</div>
+        <Spinner label="Loading your day..." />
       ) : sorted.length === 0 ? (
-        <div className="empty">Nothing scheduled for this day. Tap + to add a task.</div>
+        <div className="empty-state">
+          <div className="empty-state-icon"><CalendarClock size={22} /></div>
+          <div className="empty-state-text">Nothing scheduled for this day yet. Tap the + button to add your first task.</div>
+        </div>
       ) : (
         <div className="timeline">
           {sorted.map((t) => (

@@ -178,7 +178,7 @@ export async function deletePlannerEntry(id) {
   const { error } = await supabase.from("planner_entries").delete().eq("id", id);
   if (error) throw error;
 }
-/** Looks up the most recent chapter name used for a given chapter number in this class \u2014 powers auto-fill. */
+/** Looks up the most recent chapter name used for a given chapter number in this class - powers auto-fill. */
 export async function fetchChapterNameForNumber(userId, classId, chapterNumber) {
   if (!chapterNumber?.trim()) return null;
   const { data, error } = await supabase.from("planner_entries")
@@ -228,7 +228,7 @@ export async function fetchPlannerChapterMap(userId, classId) {
   for (const row of data || []) if (row.chapter) map[row.date] = row.chapter;
   return map;
 }
-/** Distinct chapters logged for a class \u2014 used to auto-fill test concepts when none are given. */
+/** Distinct chapters logged for a class - used to auto-fill test concepts when none are given. */
 export async function fetchPlannerChapters(userId, classId) {
   const { data, error } = await supabase.from("planner_entries").select("chapter").eq("user_id", userId).eq("class_id", classId);
   if (error) throw error;
@@ -284,7 +284,7 @@ export async function deleteCorrectionRecord(id) {
   const { error } = await supabase.from("correction_records").delete().eq("id", id);
   if (error) throw error;
 }
-/** Every distinct correction type this user has ever used \u2014 the dropdown grows itself. */
+/** Every distinct correction type this user has ever used - the dropdown grows itself. */
 export async function fetchCorrectionTypes(userId) {
   const { data, error } = await supabase.from("correction_records").select("type").eq("user_id", userId);
   if (error) throw error;
@@ -391,8 +391,8 @@ function statSummary(values) {
 }
 
 /**
- * Pulls together a full analytical snapshot \u2014 personal + every class's
- * planner/attendance/correction/performance data \u2014 for the Coach to reason
+ * Pulls together a full analytical snapshot - personal + every class's
+ * planner/attendance/correction/performance data - for the Coach to reason
  * over. Summarized rather than raw-dumped to keep the payload manageable.
  */
 export async function fetchFullAppData(userId) {

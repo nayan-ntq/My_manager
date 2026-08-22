@@ -119,3 +119,27 @@ and included in `supabase/schema.sql` for a fresh setup.
 
 This required one more Supabase migration (already applied to your live
 project) and is included in `supabase/schema.sql` for a fresh setup.
+
+## Recent update: polish pass - friendlier and more beautiful
+
+- **Fixed garbled characters** - a few unicode symbols (dashes, arrows, checkmarks)
+  could render as broken "tofu" boxes or stray codes on some devices/fonts.
+  All status/understanding/concept marks now render as crisp icons instead
+  of text glyphs, and all other unicode punctuation was swapped for plain
+  ASCII across the app.
+- **Loading states** now show a smooth branded spinner instead of bare
+  "Loading..." text, on the initial app load, Today, and Insights.
+- **Toast confirmations** - a small notification now confirms actions like
+  adding/deleting a task, saving a planner entry, creating a correction or
+  test record, and marking a task done.
+- **Safer deletes** - every delete button (tasks, classes, students, planner
+  entries, correction/test records) now requires a second tap within a few
+  seconds to confirm, instead of deleting instantly on one tap.
+- **Simpler forms** - the "New correction record" and "New test record"
+  forms now show only the essential fields up front (title, type/test type,
+  date, max marks), with chapter linking, concepts, passing marks, etc.
+  tucked behind a "More details" toggle.
+- General visual polish: smoother transitions on cards/buttons/grid cells,
+  richer empty states, refined touch feedback throughout.
+
+No database changes in this update - purely front-end.

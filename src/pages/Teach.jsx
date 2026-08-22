@@ -1,8 +1,11 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Plus, X, Trash2, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
+import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
-import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_LABELS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_LABELS, UNDERSTANDING_TITLES } from "../lib/constants";
+import { TEST_TYPES, CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_MARKS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_MARKS, UNDERSTANDING_TITLES } from "../lib/constants";
+import GridMark from "../components/GridMark";
+import ConfirmDelete from "../components/ConfirmDelete";
+import { toast } from "../components/Toast";
 import * as db from "../lib/db";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
@@ -17,6 +20,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
     if (!name.trim()) return;
     await db.createClass(userId, name, subject);
     setName(""); setSubject(""); reloadClasses();
+    toast("Class added");
   };
   const addStudent = async (classId) => {
     const val = (studentInput[classId] || "").trim();
@@ -27,14 +31,14 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
     reloadClasses();
   };
   const removeStudent = async (id) => { await db.removeStudent(id); reloadClasses(); };
-  const removeClass = async (id) => { await db.deleteClass(id); reloadClasses(); };
+  const removeClass = async (id) => { await db.deleteClass(id); reloadClasses(); toast("Class deleted"); };
 
   return (
     <div>
       <div className="card">
         <div className="card-title">New class</div>
         <div className="row-2">
-          <input className="input" placeholder="Class name (e.g. Grade 6 \u2014 Maths)" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" placeholder="Class name (e.g. Grade 6  -  Maths)" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="input" placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
         </div>
         <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={addClass}><Plus size={14} /> Add class</button>
@@ -42,8 +46,8 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
       {classes.map((c) => (
         <div className="card" key={c.id}>
           <div className="card-title-row">
-            <div><div className="card-title" style={{ marginBottom: 0 }}>{c.name}</div><div className="card-sub">{c.subject} \u00b7 {c.students.length} students</div></div>
-            <button className="btn btn-icon" onClick={() => removeClass(c.id)}><Trash2 size={14} /></button>
+            <div><div className="card-title" style={{ marginBottom: 0 }}>{c.name}</div><div className="card-sub">{c.subject}  |  {c.students.length} students</div></div>
+            <ConfirmDelete onConfirm={() => removeClass(c.id)} size={14} />
           </div>
           <div className="student-chip-wrap">
             {c.students.map((s) => <span className="student-chip" key={s.id}>{s.name}<button onClick={() => removeStudent(s.id)}><X size={11} /></button></span>)}
@@ -109,6 +113,7 @@ function PlannerPanel({ userId, classes }) {
     setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "", photos: [] });
     setAutoFilled(false);
     load();
+    toast("Planner entry saved");
   };
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
 
@@ -133,7 +138,7 @@ function PlannerPanel({ userId, classes }) {
             <input className="input" placeholder="e.g. Fractions" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} />
           </div>
         </div>
-        {autoFilled && <div className="autofill-hint">Filled in from a previous entry for chapter {form.chapter_number} \u2014 edit anything as needed.</div>}
+        {autoFilled && <div className="autofill-hint">Filled in from a previous entry for chapter {form.chapter_number}  -  edit anything as needed.</div>}
         <div className="field-label">Learning objectives</div>
         <textarea className="input textarea" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
         <div className="field-label">Methodology / activity</div>
@@ -148,13 +153,13 @@ function PlannerPanel({ userId, classes }) {
         <input className="input" placeholder="e.g. Equivalent fractions, LCM" value={form.conceptsInput} onChange={(e) => setForm({ ...form, conceptsInput: e.target.value })} />
         <div className="field-label">Exercises covered (comma-separated)</div>
         <input className="input" placeholder="e.g. Ex 3.1, Ex 3.2" value={form.exercisesInput} onChange={(e) => setForm({ ...form, exercisesInput: e.target.value })} />
-        <div className="field-label">Photos (board work, worksheets, textbook pages\u2026)</div>
+        <div className="field-label">Photos (board work, worksheets, textbook pages...)</div>
         <PhotoStrip photos={form.photos} onAdd={(url) => setForm({ ...form, photos: [...form.photos, url] })} onRemove={(pi) => setForm({ ...form, photos: form.photos.filter((_, idx) => idx !== pi) })} max={6} />
         <button className="btn btn-primary" style={{ marginTop: 12, width: "100%" }} onClick={save}><Plus size={14} /> Save entry</button>
       </div>
       {entries.map((e) => (
         <div className="card planner-entry" key={e.id}>
-          <div className="card-title-row"><div className="card-sub mono">{e.date}</div><button className="btn btn-icon" onClick={() => remove(e.id)}><Trash2 size={13} /></button></div>
+          <div className="card-title-row"><div className="card-sub mono">{e.date}</div><ConfirmDelete onConfirm={() => remove(e.id)} size={13} /></div>
           <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
           {e.objectives && <div className="planner-field"><span className="planner-label">Objectives:</span> {e.objectives}</div>}
           {e.methodology && <div className="planner-field"><span className="planner-label">Methodology:</span> {e.methodology}</div>}
@@ -210,17 +215,17 @@ function AttendancePanel({ userId, classes }) {
           <div className={`switch ${isDayOff ? "on" : ""}`} onClick={toggleDayOff}><div className="switch-knob" /></div>
         </div>
       </div>
-      {cls && isDayOff && <div className="card"><div className="empty">Marked as a day off \u2014 no attendance for {date}.</div></div>}
+      {cls && isDayOff && <div className="card"><div className="empty">Marked as a day off  -  no attendance for {date}.</div></div>}
       {cls && !isDayOff && (
         <div className="card">
-          <div className="card-title-row"><div className="card-title" style={{ marginBottom: 0 }}>Attendance</div><div className="card-sub">{presentCount}/{cls.students.length} present \u00b7 everyone present by default</div></div>
+          <div className="card-title-row"><div className="card-title" style={{ marginBottom: 0 }}>Attendance</div><div className="card-sub">{presentCount}/{cls.students.length} present  |  everyone present by default</div></div>
           {cls.students.map((s) => (
             <label key={s.id} className={`attendance-row ${isPresent(s.id) ? "present" : "absent"}`}>
               <span>{s.name}</span>
               <input type="checkbox" checked={!isPresent(s.id)} onChange={() => toggleAbsent(s.id)} />
             </label>
           ))}
-          <div className="legend">checkbox marks a student absent \u2014 unchecked means present</div>
+          <div className="legend">checkbox marks a student absent  -  unchecked means present</div>
         </div>
       )}
     </div>
@@ -254,7 +259,7 @@ function AbsencePanel({ userId, classes }) {
       </div>
       <div className="card">
         <div className="card-title">Absences & concepts missed</div>
-        {loading ? <div className="card-sub">Loading\u2026</div> : rows.length === 0 ? (
+        {loading ? <div className="card-sub">Loading...</div> : rows.length === 0 ? (
           <div className="card-sub">No absences recorded for this class yet.</div>
         ) : rows.map((r, i) => (
           <div className="marks-row" key={i}>
@@ -294,6 +299,7 @@ function CorrectionPanel({ userId, classes }) {
   const [incomplete, setIncomplete] = useState([]);
   const [showIncomplete, setShowIncomplete] = useState(false);
   const [expanded, setExpanded] = useState({});
+  const [showMore, setShowMore] = useState(false);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -335,8 +341,9 @@ function CorrectionPanel({ userId, classes }) {
     if (!title.trim() || !type.trim() || !cls) return;
     const concepts = conceptsInput.split(",").map((c) => c.trim()).filter(Boolean);
     await db.createCorrectionRecord(userId, classId, date, title, type.trim(), chapterNumber.trim() || null, concepts, []);
-    setTitle(""); setType(""); setChapterNumber(""); setConceptsInput(""); setSuggestions([]); setCreating(false);
+    setTitle(""); setType(""); setChapterNumber(""); setConceptsInput(""); setSuggestions([]); setCreating(false); setShowMore(false);
     load();
+    toast("Correction record created");
   };
   const cycle = async (record, studentId) => {
     const cur = record.marks[studentId] || "blank";
@@ -358,8 +365,9 @@ function CorrectionPanel({ userId, classes }) {
     await db.updateCorrectionMarks(task.recordId, marks);
     setRecords((prev) => prev.map((r) => r.id === task.recordId ? { ...r, marks } : r));
     setIncomplete((prev) => prev.filter((t) => !(t.recordId === task.recordId && t.studentId === task.studentId)));
+    toast(`Marked ${task.studentName} done`);
   };
-  const removeRecord = async (id) => { await db.deleteCorrectionRecord(id); load(); };
+  const removeRecord = async (id) => { await db.deleteCorrectionRecord(id); load(); toast("Record deleted"); };
 
   return (
     <div>
@@ -377,19 +385,26 @@ function CorrectionPanel({ userId, classes }) {
               <datalist id="correction-types">{correctionTypes.map((t) => <option key={t} value={t} />)}</datalist>
             </div>
             <input type="date" className="input" style={{ marginTop: 8 }} value={date} onChange={(e) => setDate(e.target.value)} />
-            <div className="field-label">Chapter number (optional \u2014 pulls suggestions from the Planner)</div>
-            <input className="input" list="chapter-numbers-correction" value={chapterNumber}
-              onChange={(e) => setChapterNumber(e.target.value)} onBlur={() => refreshSuggestions(chapterNumber, type)} />
-            <datalist id="chapter-numbers-correction">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
-            <div className="field-label">Concepts / questions covered</div>
-            <input className="input" placeholder="Comma-separated, or tap a suggestion below" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
-            {suggestions.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                {suggestions.map((s) => <button type="button" key={s} className="chip-btn" onClick={() => addSuggestion(s)}>{s}</button>)}
+            <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
+              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide chapter & concepts" : "Link a chapter & concepts (optional)"}
+            </button>
+            {showMore && (
+              <div className="more-details-body">
+                <div className="field-label">Chapter number (optional  -  pulls suggestions from the Planner)</div>
+                <input className="input" list="chapter-numbers-correction" value={chapterNumber}
+                  onChange={(e) => setChapterNumber(e.target.value)} onBlur={() => refreshSuggestions(chapterNumber, type)} />
+                <datalist id="chapter-numbers-correction">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
+                <div className="field-label">Concepts / questions covered</div>
+                <input className="input" placeholder="Comma-separated, or tap a suggestion below" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
+                {suggestions.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {suggestions.map((s) => <button type="button" key={s} className="chip-btn" onClick={() => addSuggestion(s)}>{s}</button>)}
+                  </div>
+                )}
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setCreating(false); setShowMore(false); }}>Cancel</button>
               <button className="btn btn-primary" onClick={createRecord}>Create</button>
             </div>
           </>
@@ -407,7 +422,7 @@ function CorrectionPanel({ userId, classes }) {
               <div className="marks-row" key={`${t.recordId}-${t.studentId}`}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.studentName}</div>
-                  <div className="card-sub">{t.title} <span className="badge-mini">{t.type}</span> \u00b7 <span className="mono">{t.date}</span></div>
+                  <div className="card-sub">{t.title} <span className="badge-mini">{t.type}</span>  |  <span className="mono">{t.date}</span></div>
                 </div>
                 <button className="btn btn-done" onClick={() => markTaskDone(t)}><Check size={13} /> Done</button>
               </div>
@@ -423,22 +438,22 @@ function CorrectionPanel({ userId, classes }) {
             <div className="card-title-row">
               <div>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div>
-                <div className="card-sub mono">{r.date}{r.chapter_number ? ` \u00b7 Ch ${r.chapter_number}` : ""}</div>
+                <div className="card-sub mono">{r.date}{r.chapter_number ? `  |  Ch ${r.chapter_number}` : ""}</div>
                 {r.concepts?.length > 0 && <div className="card-sub">Covers: {r.concepts.join(", ")}</div>}
               </div>
-              <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
+              <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />
             </div>
             <div className="grid-table">
               {cls.students.map((s) => {
                 const code = r.marks[s.id] || "blank";
                 return (
                   <button key={s.id} className={`grid-cell code-${code}`} title={CORRECTION_TITLES[code]} onClick={() => cycle(r, s.id)}>
-                    <span className="grid-cell-name">{s.name}</span><span className="grid-cell-code">{CORRECTION_LABELS[code]}</span>
+                    <span className="grid-cell-name">{s.name}</span><span className="grid-cell-code"><GridMark mark={CORRECTION_MARKS[code]} /></span>
                   </button>
                 );
               })}
             </div>
-            <div className="legend">tap to cycle \u00b7 blank \u2192 done \u2192 ab absent \u2192 ic incomplete \u2192 ns not submitted</div>
+            <div className="legend">tap to cycle  |  blank  ->  done  ->  ab absent  ->  ic incomplete  ->  ns not submitted</div>
             {(r.concepts || []).length > 0 && (
               <>
                 <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>
@@ -453,14 +468,14 @@ function CorrectionPanel({ userId, classes }) {
                         return (
                           <button key={s.id} className={`grid-cell utag-${tag}`} title={UNDERSTANDING_TITLES[tag]} onClick={() => cycleUnderstanding(r, concept, s.id)}>
                             <span className="grid-cell-name">{s.name}</span>
-                            <span className="grid-cell-code">{UNDERSTANDING_LABELS[tag]}</span>
+                            <span className="grid-cell-code"><GridMark mark={UNDERSTANDING_MARKS[tag]} /></span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
                 ))}
-                {isOpen && <div className="legend">tap to cycle \u00b7 understood \u2192 not understood \u2192 not done</div>}
+                {isOpen && <div className="legend">tap to cycle  |  understood  ->  not understood  ->  not done</div>}
               </>
             )}
           </div>
@@ -483,7 +498,7 @@ function statSummary(values) {
   const maxCount = Math.max(...Object.values(counts));
   const modeVals = maxCount > 1 ? Object.keys(counts).filter((k) => counts[k] === maxCount) : null;
   const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
-  return { mean: +mean.toFixed(1), median, mode: modeVals ? modeVals.join(", ") : "\u2014", stdDev: +Math.sqrt(variance).toFixed(1) };
+  return { mean: +mean.toFixed(1), median, mode: modeVals ? modeVals.join(", ") : " - ", stdDev: +Math.sqrt(variance).toFixed(1) };
 }
 
 /** Compares each student's most recent test % against their average on earlier tests, for this class's records. */
@@ -518,6 +533,7 @@ function PerformancePanel({ userId, classes }) {
   const [records, setRecords] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [showTrends, setShowTrends] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => { if (classId) setRecords(await db.fetchPerformanceRecords(userId, classId)); }, [userId, classId]);
@@ -530,8 +546,9 @@ function PerformancePanel({ userId, classes }) {
       concepts = await db.fetchPlannerChapters(userId, classId); // fall back to everything logged in the planner
     }
     await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts, passingMarks ? Number(passingMarks) : null);
-    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setPassingMarks(""); setCreating(false);
+    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setPassingMarks(""); setCreating(false); setShowMore(false);
     load();
+    toast("Test record created");
   };
   const setMark = async (record, studentId, val) => {
     const marks = { ...record.marks, [studentId]: val === "" ? null : Number(val) };
@@ -549,7 +566,7 @@ function PerformancePanel({ userId, classes }) {
     const conceptMarks = await db.updateConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
-  const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); };
+  const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); toast("Test record deleted"); };
 
   const statsFor = (r) => {
     const vals = Object.entries(r.marks).filter(([sid]) => !(r.absent || {})[sid]).map(([, v]) => v).filter((v) => v !== null && v !== undefined);
@@ -578,24 +595,25 @@ function PerformancePanel({ userId, classes }) {
               <input className="input" placeholder="Test title" value={title} onChange={(e) => setTitle(e.target.value)} />
               <select className="input" value={testType} onChange={(e) => setTestType(e.target.value)}>{TEST_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
             </div>
-            <div className="row-2">
-              <div>
-                <div className="field-label">Max marks</div>
-                <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
-              </div>
-              <div>
+            <div className="field-label">Max marks</div>
+            <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
+            <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
+              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide extra details" : "Passing marks, chapters & concepts (optional)"}
+            </button>
+            {showMore && (
+              <div className="more-details-body">
                 <div className="field-label">Passing marks</div>
                 <input type="number" className="input" placeholder="e.g. 8" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} />
+                <div className="field-label">Number of chapters involved</div>
+                <input type="number" min="0" className="input" placeholder="e.g. 2" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
+                <div className="field-label">Exercises (optional)</div>
+                <input className="input" placeholder="e.g. Ex 3.1, 3.2" value={exercises} onChange={(e) => setExercises(e.target.value)} />
+                <div className="field-label">Concepts covered (optional, comma-separated)</div>
+                <input className="input" placeholder="Leave blank to pull every concept logged in the Planner for this class" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
               </div>
-            </div>
-            <div className="field-label">Number of chapters involved</div>
-            <input type="number" min="0" className="input" placeholder="e.g. 2" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
-            <div className="field-label">Exercises (optional)</div>
-            <input className="input" placeholder="e.g. Ex 3.1, 3.2" value={exercises} onChange={(e) => setExercises(e.target.value)} />
-            <div className="field-label">Concepts covered (optional, comma-separated)</div>
-            <input className="input" placeholder="Leave blank to pull every concept logged in the Planner for this class" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setCreating(false); setShowMore(false); }}>Cancel</button>
               <button className="btn btn-primary" onClick={createRecord}>Create</button>
             </div>
           </>
@@ -611,7 +629,7 @@ function PerformancePanel({ userId, classes }) {
             <div className="marks-row" key={s.studentId}>
               <span>{s.name}</span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: s.delta >= 0 ? "#2FA88F" : "#E8556B" }}>
-                {s.delta >= 0 ? "+" : ""}{s.delta}% <span style={{ color: "#9c9488", fontWeight: 500 }}>({s.priorAvg}% \u2192 {s.latest}%)</span>
+                {s.delta >= 0 ? "+" : ""}{s.delta}% <span style={{ color: "#9c9488", fontWeight: 500 }}>({s.priorAvg}%  ->  {s.latest}%)</span>
               </span>
             </div>
           ))}
@@ -627,16 +645,16 @@ function PerformancePanel({ userId, classes }) {
             <div className="card-title-row">
               <div>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div>
-                <div className="card-sub">Out of {r.max_marks}{r.passing_marks != null ? ` \u00b7 pass mark ${r.passing_marks}` : ""}{r.chapter_count ? ` \u00b7 ${r.chapter_count} chapters` : ""}</div>
+                <div className="card-sub">Out of {r.max_marks}{r.passing_marks != null ? `  |  pass mark ${r.passing_marks}` : ""}{r.chapter_count ? `  |  ${r.chapter_count} chapters` : ""}</div>
                 {stats && (
                   <div className="card-sub">
-                    Mean {stats.mean} \u00b7 Median {stats.median} \u00b7 Mode {stats.mode} \u00b7 SD {stats.stdDev}
-                    {pass && <> \u00b7 {pass.passCount}/{pass.total} passed</>}
+                    Mean {stats.mean}  |  Median {stats.median}  |  Mode {stats.mode}  |  SD {stats.stdDev}
+                    {pass && <>  |  {pass.passCount}/{pass.total} passed</>}
                   </div>
                 )}
                 {r.exercises && <div className="card-sub">Exercises: {r.exercises}</div>}
               </div>
-              <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
+              <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />
             </div>
             {cls.students.map((s) => {
               const isAbsent = !!(r.absent || {})[s.id];
@@ -645,7 +663,7 @@ function PerformancePanel({ userId, classes }) {
                   <span>{s.name}</span>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     {!isAbsent && (
-                      <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[s.id] ?? ""} onChange={(e) => setMark(r, s.id, e.target.value)} placeholder="\u2013" />
+                      <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[s.id] ?? ""} onChange={(e) => setMark(r, s.id, e.target.value)} placeholder="-" />
                     )}
                     <button className={`btn btn-icon absent-toggle ${isAbsent ? "on" : ""}`} onClick={() => toggleAbsent(r, s.id)}>AB</button>
                   </div>
@@ -666,14 +684,14 @@ function PerformancePanel({ userId, classes }) {
                         return (
                           <button key={s.id} className={`grid-cell tag-${tag}`} title={CONCEPT_TAG_TITLES[tag]} onClick={() => cycleConceptTag(r, concept, s.id)}>
                             <span className="grid-cell-name">{s.name}</span>
-                            <span className="grid-cell-code">{CONCEPT_TAG_LABELS[tag]}</span>
+                            <span className="grid-cell-code"><GridMark mark={CONCEPT_MARKS[tag]} /></span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
                 ))}
-                {isOpen && <div className="legend">tap to cycle \u00b7 accurate \u2192 application gap \u2192 silly mistake \u2192 concept gap</div>}
+                {isOpen && <div className="legend">tap to cycle  |  accurate  ->  application gap  ->  silly mistake  ->  concept gap</div>}
               </>
             )}
           </div>
