@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Plus, X, Trash2, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
-import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS, CONCEPT_TAGS, CONCEPT_TAG_LABELS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES } from "../lib/constants";
+import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_LABELS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_LABELS, UNDERSTANDING_TITLES } from "../lib/constants";
 import * as db from "../lib/db";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
@@ -274,19 +274,26 @@ function AbsencePanel({ userId, classes }) {
 
 /* ---------- correction ---------- */
 
+/** Splits methodology/assignment prose into candidate suggestion chips. */
+function splitToSuggestions(text) {
+  if (!text) return [];
+  return [...new Set(text.split(/[\n,;]+/).map((s) => s.trim()).filter((s) => s.length > 1))];
+}
+
 function CorrectionPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState(""); const [type, setType] = useState(""); const [date, setDate] = useState(todayKey());
   const [chapterNumber, setChapterNumber] = useState("");
-  const [linkedConcepts, setLinkedConcepts] = useState([]);
-  const [linkedExercises, setLinkedExercises] = useState([]);
+  const [conceptsInput, setConceptsInput] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
   const [records, setRecords] = useState([]);
   const [correctionTypes, setCorrectionTypes] = useState(DEFAULT_CORRECTION_TYPES);
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [incomplete, setIncomplete] = useState([]);
   const [showIncomplete, setShowIncomplete] = useState(false);
+  const [expanded, setExpanded] = useState({});
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -307,17 +314,28 @@ function CorrectionPanel({ userId, classes }) {
   }, [userId, classId, cls]);
   useEffect(() => { if (showIncomplete) loadIncomplete(); }, [showIncomplete, loadIncomplete]);
 
-  const onChapterNumberBlur = async () => {
-    if (!chapterNumber.trim()) { setLinkedConcepts([]); setLinkedExercises([]); return; }
-    const match = await db.fetchChapterNameForNumber(userId, classId, chapterNumber);
-    setLinkedConcepts(match?.concepts || []);
-    setLinkedExercises(match?.exercise_list || []);
+  const refreshSuggestions = async (chapterNum, typeText) => {
+    if (!chapterNum?.trim()) { setSuggestions([]); return; }
+    const match = await db.fetchChapterNameForNumber(userId, classId, chapterNum);
+    if (!match) { setSuggestions([]); return; }
+    const isHomework = /home/i.test(typeText);
+    const isClasswork = /class/i.test(typeText);
+    const source = isHomework ? match.assignment : isClasswork ? match.methodology : `${match.methodology || ""}\n${match.assignment || ""}`;
+    setSuggestions(splitToSuggestions(source));
+    if (!conceptsInput.trim() && (match.concepts || []).length) setConceptsInput(match.concepts.join(", "));
+  };
+
+  const addSuggestion = (s) => {
+    const existing = conceptsInput.split(",").map((x) => x.trim()).filter(Boolean);
+    if (existing.includes(s)) return;
+    setConceptsInput([...existing, s].join(", "));
   };
 
   const createRecord = async () => {
     if (!title.trim() || !type.trim() || !cls) return;
-    await db.createCorrectionRecord(userId, classId, date, title, type.trim(), chapterNumber.trim() || null, linkedConcepts, linkedExercises);
-    setTitle(""); setType(""); setChapterNumber(""); setLinkedConcepts([]); setLinkedExercises([]); setCreating(false);
+    const concepts = conceptsInput.split(",").map((c) => c.trim()).filter(Boolean);
+    await db.createCorrectionRecord(userId, classId, date, title, type.trim(), chapterNumber.trim() || null, concepts, []);
+    setTitle(""); setType(""); setChapterNumber(""); setConceptsInput(""); setSuggestions([]); setCreating(false);
     load();
   };
   const cycle = async (record, studentId) => {
@@ -327,6 +345,12 @@ function CorrectionPanel({ userId, classes }) {
     await db.updateCorrectionMarks(record.id, marks);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     if (showIncomplete) loadIncomplete();
+  };
+  const cycleUnderstanding = async (record, concept, studentId) => {
+    const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
+    const next = UNDERSTANDING_TAGS[(UNDERSTANDING_TAGS.indexOf(cur) + 1) % UNDERSTANDING_TAGS.length];
+    const conceptMarks = await db.updateCorrectionConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const markTaskDone = async (task) => {
     const record = records.find((r) => r.id === task.recordId);
@@ -348,17 +372,20 @@ function CorrectionPanel({ userId, classes }) {
           <>
             <div className="row-2" style={{ marginTop: 10 }}>
               <input className="input" placeholder="Assignment title" value={title} onChange={(e) => setTitle(e.target.value)} />
-              <input className="input" list="correction-types" placeholder="Type (e.g. Homework)" value={type} onChange={(e) => setType(e.target.value)} />
+              <input className="input" list="correction-types" placeholder="Type (e.g. Homework)" value={type}
+                onChange={(e) => setType(e.target.value)} onBlur={() => refreshSuggestions(chapterNumber, type)} />
               <datalist id="correction-types">{correctionTypes.map((t) => <option key={t} value={t} />)}</datalist>
             </div>
             <input type="date" className="input" style={{ marginTop: 8 }} value={date} onChange={(e) => setDate(e.target.value)} />
-            <div className="field-label">Chapter number (optional \u2014 links concepts from the Planner)</div>
-            <input className="input" list="chapter-numbers-correction" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} onBlur={onChapterNumberBlur} />
+            <div className="field-label">Chapter number (optional \u2014 pulls suggestions from the Planner)</div>
+            <input className="input" list="chapter-numbers-correction" value={chapterNumber}
+              onChange={(e) => setChapterNumber(e.target.value)} onBlur={() => refreshSuggestions(chapterNumber, type)} />
             <datalist id="chapter-numbers-correction">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
-            {(linkedConcepts.length > 0 || linkedExercises.length > 0) && (
-              <div className="autofill-hint">
-                {linkedConcepts.length > 0 && <>Concepts: {linkedConcepts.join(", ")}<br /></>}
-                {linkedExercises.length > 0 && <>Exercises: {linkedExercises.join(", ")}</>}
+            <div className="field-label">Concepts / questions covered</div>
+            <input className="input" placeholder="Comma-separated, or tap a suggestion below" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
+            {suggestions.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {suggestions.map((s) => <button type="button" key={s} className="chip-btn" onClick={() => addSuggestion(s)}>{s}</button>)}
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -389,45 +416,108 @@ function CorrectionPanel({ userId, classes }) {
         </div>
       )}
 
-      {cls && records.map((r) => (
-        <div className="card" key={r.id}>
-          <div className="card-title-row">
-            <div>
-              <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div>
-              <div className="card-sub mono">{r.date}{r.chapter_number ? ` \u00b7 Ch ${r.chapter_number}` : ""}</div>
-              {r.concepts?.length > 0 && <div className="card-sub">Concepts: {r.concepts.join(", ")}</div>}
+      {cls && records.map((r) => {
+        const isOpen = !!expanded[r.id];
+        return (
+          <div className="card" key={r.id}>
+            <div className="card-title-row">
+              <div>
+                <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div>
+                <div className="card-sub mono">{r.date}{r.chapter_number ? ` \u00b7 Ch ${r.chapter_number}` : ""}</div>
+                {r.concepts?.length > 0 && <div className="card-sub">Covers: {r.concepts.join(", ")}</div>}
+              </div>
+              <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
             </div>
-            <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
-          </div>
-          <div className="grid-table">
-            {cls.students.map((s) => {
-              const code = r.marks[s.id] || "blank";
-              return (
-                <button key={s.id} className={`grid-cell code-${code}`} onClick={() => cycle(r, s.id)}>
-                  <span className="grid-cell-name">{s.name}</span><span className="grid-cell-code">{CORRECTION_LABELS[code]}</span>
+            <div className="grid-table">
+              {cls.students.map((s) => {
+                const code = r.marks[s.id] || "blank";
+                return (
+                  <button key={s.id} className={`grid-cell code-${code}`} title={CORRECTION_TITLES[code]} onClick={() => cycle(r, s.id)}>
+                    <span className="grid-cell-name">{s.name}</span><span className="grid-cell-code">{CORRECTION_LABELS[code]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="legend">tap to cycle \u00b7 blank \u2192 done \u2192 ab absent \u2192 ic incomplete \u2192 ns not submitted</div>
+            {(r.concepts || []).length > 0 && (
+              <>
+                <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>
+                  {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Concept understanding
                 </button>
-              );
-            })}
+                {isOpen && r.concepts.map((concept) => (
+                  <div className="concept-block" key={concept}>
+                    <div className="concept-block-title">{concept}</div>
+                    <div className="grid-table">
+                      {cls.students.map((s) => {
+                        const tag = r.concept_marks?.[s.id]?.[concept] || "blank";
+                        return (
+                          <button key={s.id} className={`grid-cell utag-${tag}`} title={UNDERSTANDING_TITLES[tag]} onClick={() => cycleUnderstanding(r, concept, s.id)}>
+                            <span className="grid-cell-name">{s.name}</span>
+                            <span className="grid-cell-code">{UNDERSTANDING_LABELS[tag]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {isOpen && <div className="legend">tap to cycle \u00b7 understood \u2192 not understood \u2192 not done</div>}
+              </>
+            )}
           </div>
-          <div className="legend">tap to cycle \u00b7 blank \u2192 done \u2192 ab absent \u2192 ic incomplete</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 /* ---------- performance ---------- */
 
+function statSummary(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const counts = {};
+  for (const v of values) counts[v] = (counts[v] || 0) + 1;
+  const maxCount = Math.max(...Object.values(counts));
+  const modeVals = maxCount > 1 ? Object.keys(counts).filter((k) => counts[k] === maxCount) : null;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return { mean: +mean.toFixed(1), median, mode: modeVals ? modeVals.join(", ") : "\u2014", stdDev: +Math.sqrt(variance).toFixed(1) };
+}
+
+/** Compares each student's most recent test % against their average on earlier tests, for this class's records. */
+function computeImprovingStudents(records, studentsById) {
+  const chronological = [...records].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const byStudent = {};
+  for (const r of chronological) {
+    for (const [sid, mark] of Object.entries(r.marks || {})) {
+      if (mark === null || mark === undefined || (r.absent || {})[sid]) continue;
+      (byStudent[sid] = byStudent[sid] || []).push((mark / r.max_marks) * 100);
+    }
+  }
+  const results = [];
+  for (const [sid, pctSeries] of Object.entries(byStudent)) {
+    if (pctSeries.length < 2) continue;
+    const latest = pctSeries[pctSeries.length - 1];
+    const priorAvg = pctSeries.slice(0, -1).reduce((a, b) => a + b, 0) / (pctSeries.length - 1);
+    results.push({ studentId: sid, name: studentsById[sid] || "Unknown", latest: +latest.toFixed(1), priorAvg: +priorAvg.toFixed(1), delta: +(latest - priorAvg).toFixed(1) });
+  }
+  return results.sort((a, b) => b.delta - a.delta);
+}
+
 function PerformancePanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState(""); const [testType, setTestType] = useState("CT"); const [maxMarks, setMaxMarks] = useState(20);
+  const [passingMarks, setPassingMarks] = useState("");
   const [chapterCount, setChapterCount] = useState("");
   const [exercises, setExercises] = useState("");
   const [conceptsInput, setConceptsInput] = useState("");
   const [records, setRecords] = useState([]);
   const [expanded, setExpanded] = useState({});
+  const [showTrends, setShowTrends] = useState(false);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => { if (classId) setRecords(await db.fetchPerformanceRecords(userId, classId)); }, [userId, classId]);
@@ -439,14 +529,19 @@ function PerformancePanel({ userId, classes }) {
     if (concepts.length === 0) {
       concepts = await db.fetchPlannerChapters(userId, classId); // fall back to everything logged in the planner
     }
-    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts);
-    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setCreating(false);
+    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts, passingMarks ? Number(passingMarks) : null);
+    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setPassingMarks(""); setCreating(false);
     load();
   };
   const setMark = async (record, studentId, val) => {
     const marks = { ...record.marks, [studentId]: val === "" ? null : Number(val) };
     await db.updatePerformanceMarks(record.id, marks);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+  };
+  const toggleAbsent = async (record, studentId) => {
+    const isAbsent = !(record.absent || {})[studentId];
+    const { absent, marks } = await db.setPerformanceAbsent(record.id, record.absent || {}, record.marks, studentId, isAbsent);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, absent, marks } : r));
   };
   const cycleConceptTag = async (record, concept, studentId) => {
     const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
@@ -455,11 +550,20 @@ function PerformancePanel({ userId, classes }) {
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); };
-  const average = (r) => {
-    const vals = Object.values(r.marks).filter((v) => v !== null && v !== undefined);
-    if (!vals.length) return "\u2014";
-    return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
+
+  const statsFor = (r) => {
+    const vals = Object.entries(r.marks).filter(([sid]) => !(r.absent || {})[sid]).map(([, v]) => v).filter((v) => v !== null && v !== undefined);
+    return statSummary(vals);
   };
+  const passInfo = (r) => {
+    if (r.passing_marks == null) return null;
+    const vals = Object.entries(r.marks).filter(([sid]) => !(r.absent || {})[sid]).map(([, v]) => v).filter((v) => v !== null && v !== undefined);
+    if (!vals.length) return null;
+    const passCount = vals.filter((v) => v >= r.passing_marks).length;
+    return { passCount, total: vals.length };
+  };
+
+  const improving = cls ? computeImprovingStudents(records, Object.fromEntries(cls.students.map((s) => [s.id, s.name]))) : [];
 
   return (
     <div>
@@ -474,8 +578,16 @@ function PerformancePanel({ userId, classes }) {
               <input className="input" placeholder="Test title" value={title} onChange={(e) => setTitle(e.target.value)} />
               <select className="input" value={testType} onChange={(e) => setTestType(e.target.value)}>{TEST_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
             </div>
-            <div className="field-label">Max marks</div>
-            <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
+            <div className="row-2">
+              <div>
+                <div className="field-label">Max marks</div>
+                <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
+              </div>
+              <div>
+                <div className="field-label">Passing marks</div>
+                <input type="number" className="input" placeholder="e.g. 8" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} />
+              </div>
+            </div>
             <div className="field-label">Number of chapters involved</div>
             <input type="number" min="0" className="input" placeholder="e.g. 2" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
             <div className="field-label">Exercises (optional)</div>
@@ -489,24 +601,57 @@ function PerformancePanel({ userId, classes }) {
           </>
         )}
       </div>
+
+      {cls && improving.length > 0 && (
+        <div className="card">
+          <button className="expand-toggle" style={{ paddingTop: 0 }} onClick={() => setShowTrends(!showTrends)}>
+            {showTrends ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Improving / slipping students
+          </button>
+          {showTrends && improving.map((s) => (
+            <div className="marks-row" key={s.studentId}>
+              <span>{s.name}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: s.delta >= 0 ? "#2FA88F" : "#E8556B" }}>
+                {s.delta >= 0 ? "+" : ""}{s.delta}% <span style={{ color: "#9c9488", fontWeight: 500 }}>({s.priorAvg}% \u2192 {s.latest}%)</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {cls && records.map((r) => {
         const isOpen = !!expanded[r.id];
+        const stats = statsFor(r);
+        const pass = passInfo(r);
         return (
           <div className="card" key={r.id}>
             <div className="card-title-row">
               <div>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div>
-                <div className="card-sub">Out of {r.max_marks} \u00b7 Class avg {average(r)}{r.chapter_count ? ` \u00b7 ${r.chapter_count} chapters` : ""}</div>
+                <div className="card-sub">Out of {r.max_marks}{r.passing_marks != null ? ` \u00b7 pass mark ${r.passing_marks}` : ""}{r.chapter_count ? ` \u00b7 ${r.chapter_count} chapters` : ""}</div>
+                {stats && (
+                  <div className="card-sub">
+                    Mean {stats.mean} \u00b7 Median {stats.median} \u00b7 Mode {stats.mode} \u00b7 SD {stats.stdDev}
+                    {pass && <> \u00b7 {pass.passCount}/{pass.total} passed</>}
+                  </div>
+                )}
                 {r.exercises && <div className="card-sub">Exercises: {r.exercises}</div>}
               </div>
               <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
             </div>
-            {cls.students.map((s) => (
-              <div className="marks-row" key={s.id}>
-                <span>{s.name}</span>
-                <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[s.id] ?? ""} onChange={(e) => setMark(r, s.id, e.target.value)} placeholder="\u2013" />
-              </div>
-            ))}
+            {cls.students.map((s) => {
+              const isAbsent = !!(r.absent || {})[s.id];
+              return (
+                <div className="marks-row" key={s.id}>
+                  <span>{s.name}</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {!isAbsent && (
+                      <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[s.id] ?? ""} onChange={(e) => setMark(r, s.id, e.target.value)} placeholder="\u2013" />
+                    )}
+                    <button className={`btn btn-icon absent-toggle ${isAbsent ? "on" : ""}`} onClick={() => toggleAbsent(r, s.id)}>AB</button>
+                  </div>
+                </div>
+              );
+            })}
             {(r.concepts || []).length > 0 && (
               <>
                 <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>

@@ -93,3 +93,29 @@ already if you're copying it fresh — no separate step needed there.
 
 Database migration for this is already applied to your live Supabase project
 and included in `supabase/schema.sql` for a fresh setup.
+
+## Recent update: concept-level understanding, test statistics, full-data Coach
+
+- **Correction records** now have a per-student, per-concept "understanding"
+  grid (Understood / Not understood / Not done), alongside the existing
+  overall done/absent/incomplete/not-submitted status. A new **"ns" (not
+  submitted)** status was added to that cycle.
+- **Concept suggestions** \u2014 when creating a correction record, enter the
+  chapter number and it suggests concepts pulled from that lesson's
+  Methodology (for Classwork-type entries) or Assignment (for Homework-type)
+  as tappable chips.
+- **Test records** now ask for **passing marks**, support marking a student
+  **Absent** (excluded from all statistics), and show **mean, median, mode,
+  and standard deviation** alongside pass/fail counts.
+- **Improving / slipping students** \u2014 a new card compares each student's
+  most recent test % against their average on earlier tests for that class.
+- **Coach now has full app access** \u2014 every class's roster, planner
+  chapters/concepts, attendance rate, correction completion, and test
+  statistics are sent as a single snapshot at the start of each conversation,
+  not just a trimmed personal summary.
+- **AI model updated to Gemini 3.6 Flash** (`gemini-3.6-flash`) as the
+  default when `AI_PROVIDER=gemini` or as fallback. Override anytime via the
+  `GEMINI_MODEL` environment variable in Vercel.
+
+This required one more Supabase migration (already applied to your live
+project) and is included in `supabase/schema.sql` for a fresh setup.

@@ -2,32 +2,19 @@ import React, { useState, useRef, useEffect } from "react";
 import { Send, Sparkles } from "lucide-react";
 import * as db from "../lib/db";
 
-function addDays(d, n) { const c = new Date(d); c.setDate(c.getDate() + n); return c; }
-function toKey(d) { return d.toISOString().slice(0, 10); }
+const SUGGESTIONS = [
+  "How's my week looking?",
+  "Which class needs the most attention right now?",
+  "Who's improving and who's falling behind?",
+  "What concepts are students weakest on?",
+];
 
-const SUGGESTIONS = ["How's my week looking?", "Where should I focus next?", "How is a class doing overall?", "One small change to try tomorrow"];
-
-export default function Coach({ userId, stats, classes }) {
+export default function Coach({ userId, stats }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages, loading]);
-
-  const buildContext = async () => {
-    const today = toKey(new Date());
-    const from = toKey(addDays(new Date(), -13));
-    const [todayTasks, rangeRows] = await Promise.all([
-      db.fetchTasksForDate(userId, today),
-      db.fetchTasksInRange(userId, from, today),
-    ]);
-    return {
-      stats,
-      todayTasks: todayTasks.map((t) => ({ title: t.title, category: t.category, status: t.status, important: t.important })),
-      last14Days: rangeRows,
-      classes: classes.map((c) => ({ name: c.name, subject: c.subject, studentCount: c.students.length })),
-    };
-  };
 
   const send = async (text) => {
     const userText = text ?? input;
@@ -37,7 +24,9 @@ export default function Coach({ userId, stats, classes }) {
     setMessages(next);
     setLoading(true);
     try {
-      const context = messages.length === 0 ? await buildContext() : undefined;
+      // Full app snapshot only needs to be pulled and sent once per conversation \u2014
+      // the model keeps it in context for the rest of the thread.
+      const context = messages.length === 0 ? await db.fetchFullAppData(userId) : undefined;
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

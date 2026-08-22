@@ -182,7 +182,7 @@ export async function deletePlannerEntry(id) {
 export async function fetchChapterNameForNumber(userId, classId, chapterNumber) {
   if (!chapterNumber?.trim()) return null;
   const { data, error } = await supabase.from("planner_entries")
-    .select("chapter, concepts, exercise_list").eq("user_id", userId).eq("class_id", classId)
+    .select("chapter, concepts, exercise_list, methodology, assignment").eq("user_id", userId).eq("class_id", classId)
     .eq("chapter_number", chapterNumber.trim()).order("date", { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
   return data;
@@ -273,6 +273,13 @@ export async function updateCorrectionMarks(id, marks) {
   const { error } = await supabase.from("correction_records").update({ marks }).eq("id", id);
   if (error) throw error;
 }
+export async function updateCorrectionConceptMark(id, currentConceptMarks, studentId, concept, tag) {
+  const conceptMarks = { ...currentConceptMarks };
+  conceptMarks[studentId] = { ...(conceptMarks[studentId] || {}), [concept]: tag };
+  const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
+  if (error) throw error;
+  return conceptMarks;
+}
 export async function deleteCorrectionRecord(id) {
   const { error } = await supabase.from("correction_records").delete().eq("id", id);
   if (error) throw error;
@@ -310,12 +317,13 @@ export async function fetchAllPerformanceRecords(userId) {
   if (error) throw error;
   return data || [];
 }
-export async function createPerformanceRecord(userId, classId, title, testType, maxMarks, chapterCount, exercises, concepts) {
+export async function createPerformanceRecord(userId, classId, title, testType, maxMarks, chapterCount, exercises, concepts, passingMarks) {
   const { data, error } = await supabase.from("performance_records")
     .insert({
       user_id: userId, class_id: classId, title, test_type: testType, max_marks: maxMarks,
       chapter_count: chapterCount || null, exercises: exercises || null,
-      concepts: concepts || [], marks: {}, concept_marks: {},
+      concepts: concepts || [], marks: {}, concept_marks: {}, absent: {},
+      passing_marks: passingMarks || null,
     }).select().single();
   if (error) throw error;
   return data;
@@ -323,6 +331,14 @@ export async function createPerformanceRecord(userId, classId, title, testType, 
 export async function updatePerformanceMarks(id, marks) {
   const { error } = await supabase.from("performance_records").update({ marks }).eq("id", id);
   if (error) throw error;
+}
+export async function setPerformanceAbsent(id, currentAbsent, currentMarks, studentId, isAbsent) {
+  const absent = { ...currentAbsent, [studentId]: isAbsent };
+  const marks = { ...currentMarks };
+  if (isAbsent) marks[studentId] = null; // clear any mark when marking absent
+  const { error } = await supabase.from("performance_records").update({ absent, marks }).eq("id", id);
+  if (error) throw error;
+  return { absent, marks };
 }
 export async function updateConceptMark(id, currentConceptMarks, studentId, concept, tag) {
   const conceptMarks = { ...currentConceptMarks };
@@ -356,4 +372,78 @@ export async function ensureSeeded(userId) {
     const cls = await createClass(userId, c.name, c.subject);
     for (let i = 0; i < c.students.length; i++) await addStudent(userId, cls.id, c.students[i], i);
   }
+}
+
+/* ---------- full data snapshot for the AI Coach ---------- */
+
+function statSummary(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const counts = {};
+  for (const v of values) counts[v] = (counts[v] || 0) + 1;
+  const maxCount = Math.max(...Object.values(counts));
+  const mode = maxCount > 1 ? Object.keys(counts).filter((k) => counts[k] === maxCount).map(Number) : null;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return { mean: +mean.toFixed(2), median, mode, stdDev: +Math.sqrt(variance).toFixed(2), count: values.length };
+}
+
+/**
+ * Pulls together a full analytical snapshot \u2014 personal + every class's
+ * planner/attendance/correction/performance data \u2014 for the Coach to reason
+ * over. Summarized rather than raw-dumped to keep the payload manageable.
+ */
+export async function fetchFullAppData(userId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const from90 = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+
+  const [meta, classes, todayTasks, taskHistory] = await Promise.all([
+    fetchMeta(userId),
+    fetchClasses(userId),
+    fetchTasksForDate(userId, today),
+    fetchTasksInRange(userId, from90, today),
+  ]);
+
+  const classSummaries = await Promise.all(classes.map(async (cls) => {
+    const studentsById = Object.fromEntries(cls.students.map((s) => [s.id, s.name]));
+    const [planner, attendance, correction, performance] = await Promise.all([
+      fetchPlannerEntries(userId, cls.id),
+      fetchAllAttendanceForClass(userId, cls.id),
+      fetchCorrectionRecords(userId, cls.id),
+      fetchPerformanceRecords(userId, cls.id),
+    ]);
+
+    const workingDays = attendance.filter((a) => !a.is_day_off);
+    const attendanceRate = workingDays.length
+      ? Math.round((workingDays.reduce((sum, a) => sum + Object.values(a.present || {}).filter((p) => p !== false).length, 0) /
+          (workingDays.length * cls.students.length)) * 100)
+      : null;
+
+    const performanceSummary = performance.map((r) => {
+      const vals = Object.entries(r.marks)
+        .filter(([sid]) => !(r.absent || {})[sid])
+        .map(([, v]) => v).filter((v) => v !== null && v !== undefined);
+      const stats = statSummary(vals);
+      const passCount = r.passing_marks != null ? vals.filter((v) => v >= r.passing_marks).length : null;
+      return {
+        title: r.title, testType: r.test_type, maxMarks: r.max_marks, passingMarks: r.passing_marks,
+        concepts: r.concepts, stats, passCount, absentCount: Object.values(r.absent || {}).filter(Boolean).length,
+      };
+    });
+
+    const incompleteCount = correction.reduce((sum, r) => sum + Object.values(r.marks || {}).filter((v) => v === "ic").length, 0);
+    const notSubmittedCount = correction.reduce((sum, r) => sum + Object.values(r.marks || {}).filter((v) => v === "ns").length, 0);
+
+    return {
+      name: cls.name, subject: cls.subject, students: cls.students.map((s) => s.name),
+      attendanceRatePct: attendanceRate,
+      plannerChapters: planner.map((p) => ({ date: p.date, chapterNumber: p.chapter_number, chapter: p.chapter, concepts: p.concepts })),
+      correctionSummary: { totalRecords: correction.length, incompleteCount, notSubmittedCount },
+      performanceSummary,
+    };
+  }));
+
+  return { profile: meta, todayTasks: todayTasks.map((t) => ({ title: t.title, category: t.category, status: t.status, important: t.important })), last90DaysTaskCounts: { total: taskHistory.length, done: taskHistory.filter((t) => t.status === "done").length }, classes: classSummaries };
 }
