@@ -133,6 +133,7 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 
 .planner-entry .planner-field { font-size:13px; margin-bottom:4px; line-height:1.5; }
 .planner-label { color:#9c9488; font-weight:600; }
+.autofill-hint { font-size:11.5px; color:#5B7FDB; background:#5B7FDB0d; border:1px solid #5B7FDB30; border-radius:8px; padding:7px 10px; margin-top:8px; line-height:1.5; }
 
 .attendance-row { display:flex; align-items:center; justify-content:space-between; padding:9px 4px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #F1ECE3; }
 .attendance-row:last-child { border-bottom:none; }

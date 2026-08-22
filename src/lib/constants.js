@@ -12,6 +12,8 @@ export const CATEGORY_ORDER = ["professional", "gym", "health", "growth", "sched
 export const TEST_TYPES = ["CT", "IA-1", "IA-2", "Term"];
 export const CORRECTION_CODES = ["blank", "done", "ab", "ic"];
 export const CORRECTION_LABELS = { blank: "\u2013", done: "\u2713", ab: "ab", ic: "ic" };
+// starting suggestions for the correction-type dropdown \u2014 grows with whatever the user types
+export const DEFAULT_CORRECTION_TYPES = ["Classwork", "Homework", "Worksheet", "Textbook", "Revision"];
 
 // per-student, per-concept tag cycled on the performance grid
 export const CONCEPT_TAGS = ["blank", "accurate", "application", "silly", "gap"];

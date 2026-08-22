@@ -178,6 +178,23 @@ export async function deletePlannerEntry(id) {
   const { error } = await supabase.from("planner_entries").delete().eq("id", id);
   if (error) throw error;
 }
+/** Looks up the most recent chapter name used for a given chapter number in this class \u2014 powers auto-fill. */
+export async function fetchChapterNameForNumber(userId, classId, chapterNumber) {
+  if (!chapterNumber?.trim()) return null;
+  const { data, error } = await supabase.from("planner_entries")
+    .select("chapter, concepts, exercise_list").eq("user_id", userId).eq("class_id", classId)
+    .eq("chapter_number", chapterNumber.trim()).order("date", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+/** Distinct chapter numbers logged for a class, for the datalist dropdown. */
+export async function fetchChapterNumbers(userId, classId) {
+  const { data, error } = await supabase.from("planner_entries").select("chapter_number").eq("user_id", userId).eq("class_id", classId);
+  if (error) throw error;
+  const seen = new Set();
+  for (const row of data || []) if (row.chapter_number?.trim()) seen.add(row.chapter_number.trim());
+  return [...seen];
+}
 
 /* ---------- teaching: attendance ---------- */
 
@@ -244,8 +261,11 @@ export async function fetchCorrectionRecords(userId, classId) {
   if (error) throw error;
   return data || [];
 }
-export async function createCorrectionRecord(userId, classId, date, title, type) {
-  const { data, error } = await supabase.from("correction_records").insert({ user_id: userId, class_id: classId, date, title, type, marks: {} }).select().single();
+export async function createCorrectionRecord(userId, classId, date, title, type, chapterNumber, concepts, exerciseList) {
+  const { data, error } = await supabase.from("correction_records").insert({
+    user_id: userId, class_id: classId, date, title, type, marks: {},
+    chapter_number: chapterNumber || null, concepts: concepts || [], exercise_list: exerciseList || [],
+  }).select().single();
   if (error) throw error;
   return data;
 }
@@ -256,6 +276,26 @@ export async function updateCorrectionMarks(id, marks) {
 export async function deleteCorrectionRecord(id) {
   const { error } = await supabase.from("correction_records").delete().eq("id", id);
   if (error) throw error;
+}
+/** Every distinct correction type this user has ever used \u2014 the dropdown grows itself. */
+export async function fetchCorrectionTypes(userId) {
+  const { data, error } = await supabase.from("correction_records").select("type").eq("user_id", userId);
+  if (error) throw error;
+  const seen = new Set();
+  for (const row of data || []) if (row.type?.trim()) seen.add(row.type.trim());
+  return [...seen];
+}
+/** Every "incomplete" (ic) mark across a class's correction records, flattened for a follow-up list. */
+export async function fetchIncompleteTasks(userId, classId, studentsById) {
+  const { data, error } = await supabase.from("correction_records").select("*").eq("user_id", userId).eq("class_id", classId).order("date", { ascending: false });
+  if (error) throw error;
+  const rows = [];
+  for (const r of data || []) {
+    for (const [studentId, code] of Object.entries(r.marks || {})) {
+      if (code === "ic") rows.push({ recordId: r.id, date: r.date, title: r.title, type: r.type, studentId, studentName: studentsById[studentId] || "Unknown", marks: r.marks });
+    }
+  }
+  return rows;
 }
 
 /* ---------- teaching: performance records ---------- */

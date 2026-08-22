@@ -74,3 +74,22 @@ project): `attendance_records.is_day_off`, and
 If you ever recreate the Supabase project from scratch, re-run
 `supabase/schema.sql` first, then this migration is baked into the schema
 already if you're copying it fresh — no separate step needed there.
+
+## Recent update: chapter linking, concept tracing, incomplete-task follow-up
+
+- **Planner** — chapter number and chapter name are now separate fields.
+  Type a chapter number you've used before and the name (plus concepts/
+  exercises, if you don't overwrite them) auto-fills from your last entry
+  for that number.
+- **Concepts & exercises** are now captured explicitly in the Planner per
+  lesson, and can be linked into **Correction records** by entering the same
+  chapter number \u2014 it pulls in that lesson's concepts/exercises automatically.
+- **Correction type** is now a free-text field with a dropdown built from
+  every type you've used before (starts with Classwork/Homework/Worksheet/
+  Textbook/Revision, but anything new you type joins the list from then on).
+- **Incomplete tasks** \u2014 a new expandable section at the top of the
+  Correction tab lists every student currently marked "ic" (incomplete)
+  across that class, with a one-tap "Done" button once they finish it.
+
+Database migration for this is already applied to your live Supabase project
+and included in `supabase/schema.sql` for a fresh setup.

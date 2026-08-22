@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Plus, X, Trash2, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
-import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS, CONCEPT_TAGS, CONCEPT_TAG_LABELS, CONCEPT_TAG_TITLES } from "../lib/constants";
+import { TEST_TYPES, CORRECTION_CODES, CORRECTION_LABELS, CONCEPT_TAGS, CONCEPT_TAG_LABELS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES } from "../lib/constants";
 import * as db from "../lib/db";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
@@ -69,16 +69,45 @@ function PlannerPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [date, setDate] = useState(todayKey());
-  const [form, setForm] = useState({ chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", photos: [] });
+  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "", photos: [] });
   const [entries, setEntries] = useState([]);
+  const [chapterNumbers, setChapterNumbers] = useState([]);
+  const [autoFilled, setAutoFilled] = useState(false);
 
-  const load = useCallback(async () => { if (classId) setEntries(await db.fetchPlannerEntries(userId, classId)); }, [userId, classId]);
+  const load = useCallback(async () => {
+    if (!classId) return;
+    const [entryRows, numbers] = await Promise.all([db.fetchPlannerEntries(userId, classId), db.fetchChapterNumbers(userId, classId)]);
+    setEntries(entryRows); setChapterNumbers(numbers);
+  }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
+
+  const onChapterNumberBlur = async () => {
+    if (!form.chapter_number.trim() || form.chapter.trim()) return; // don't clobber a manually-typed name
+    const match = await db.fetchChapterNameForNumber(userId, classId, form.chapter_number);
+    if (match) {
+      setForm((f) => ({
+        ...f,
+        chapter: match.chapter || f.chapter,
+        conceptsInput: f.conceptsInput || (match.concepts || []).join(", "),
+        exercisesInput: f.exercisesInput || (match.exercise_list || []).join(", "),
+      }));
+      setAutoFilled(true);
+    }
+  };
 
   const save = async () => {
     if (!classId || !form.chapter.trim()) return;
-    await db.createPlannerEntry(userId, classId, date, form);
-    setForm({ chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", photos: [] });
+    const payload = {
+      chapter_number: form.chapter_number.trim() || null,
+      chapter: form.chapter, objectives: form.objectives, methodology: form.methodology,
+      resources: form.resources, assignment: form.assignment, reflection: form.reflection,
+      concepts: form.conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
+      exercise_list: form.exercisesInput.split(",").map((s) => s.trim()).filter(Boolean),
+      photos: form.photos,
+    };
+    await db.createPlannerEntry(userId, classId, date, payload);
+    setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "", photos: [] });
+    setAutoFilled(false);
     load();
   };
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
@@ -91,8 +120,20 @@ function PlannerPanel({ userId, classes }) {
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />
         <div className="field-label">Date</div>
         <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-        <div className="field-label">Chapter / Unit</div>
-        <input className="input" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} />
+        <div className="row-2">
+          <div>
+            <div className="field-label">Chapter number</div>
+            <input className="input" list="chapter-numbers" placeholder="e.g. 3" value={form.chapter_number}
+              onChange={(e) => { setAutoFilled(false); setForm({ ...form, chapter_number: e.target.value }); }}
+              onBlur={onChapterNumberBlur} />
+            <datalist id="chapter-numbers">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
+          </div>
+          <div>
+            <div className="field-label">Chapter name</div>
+            <input className="input" placeholder="e.g. Fractions" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} />
+          </div>
+        </div>
+        {autoFilled && <div className="autofill-hint">Filled in from a previous entry for chapter {form.chapter_number} \u2014 edit anything as needed.</div>}
         <div className="field-label">Learning objectives</div>
         <textarea className="input textarea" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
         <div className="field-label">Methodology / activity</div>
@@ -103,6 +144,10 @@ function PlannerPanel({ userId, classes }) {
         <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
         <div className="field-label">Reflection</div>
         <textarea className="input textarea" value={form.reflection} onChange={(e) => setForm({ ...form, reflection: e.target.value })} />
+        <div className="field-label">Concepts covered (comma-separated)</div>
+        <input className="input" placeholder="e.g. Equivalent fractions, LCM" value={form.conceptsInput} onChange={(e) => setForm({ ...form, conceptsInput: e.target.value })} />
+        <div className="field-label">Exercises covered (comma-separated)</div>
+        <input className="input" placeholder="e.g. Ex 3.1, Ex 3.2" value={form.exercisesInput} onChange={(e) => setForm({ ...form, exercisesInput: e.target.value })} />
         <div className="field-label">Photos (board work, worksheets, textbook pages\u2026)</div>
         <PhotoStrip photos={form.photos} onAdd={(url) => setForm({ ...form, photos: [...form.photos, url] })} onRemove={(pi) => setForm({ ...form, photos: form.photos.filter((_, idx) => idx !== pi) })} max={6} />
         <button className="btn btn-primary" style={{ marginTop: 12, width: "100%" }} onClick={save}><Plus size={14} /> Save entry</button>
@@ -110,11 +155,13 @@ function PlannerPanel({ userId, classes }) {
       {entries.map((e) => (
         <div className="card planner-entry" key={e.id}>
           <div className="card-title-row"><div className="card-sub mono">{e.date}</div><button className="btn btn-icon" onClick={() => remove(e.id)}><Trash2 size={13} /></button></div>
-          <div className="planner-field"><b>{e.chapter}</b></div>
+          <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
           {e.objectives && <div className="planner-field"><span className="planner-label">Objectives:</span> {e.objectives}</div>}
           {e.methodology && <div className="planner-field"><span className="planner-label">Methodology:</span> {e.methodology}</div>}
           {e.assignment && <div className="planner-field"><span className="planner-label">Assignment:</span> {e.assignment}</div>}
           {e.reflection && <div className="planner-field"><span className="planner-label">Reflection:</span> {e.reflection}</div>}
+          {e.concepts?.length > 0 && <div className="planner-field"><span className="planner-label">Concepts:</span> {e.concepts.join(", ")}</div>}
+          {e.exercise_list?.length > 0 && <div className="planner-field"><span className="planner-label">Exercises:</span> {e.exercise_list.join(", ")}</div>}
           {e.photos?.length > 0 && <div className="photo-strip" style={{ marginTop: 8 }}>{e.photos.map((p, i) => <div className="photo-thumb photo-thumb-view" key={i}><img src={p} alt="" /></div>)}</div>}
         </div>
       ))}
@@ -123,6 +170,7 @@ function PlannerPanel({ userId, classes }) {
 }
 
 /* ---------- attendance ---------- */
+
 
 function AttendancePanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
@@ -230,17 +278,47 @@ function CorrectionPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState(""); const [type, setType] = useState("CW"); const [date, setDate] = useState(todayKey());
+  const [title, setTitle] = useState(""); const [type, setType] = useState(""); const [date, setDate] = useState(todayKey());
+  const [chapterNumber, setChapterNumber] = useState("");
+  const [linkedConcepts, setLinkedConcepts] = useState([]);
+  const [linkedExercises, setLinkedExercises] = useState([]);
   const [records, setRecords] = useState([]);
+  const [correctionTypes, setCorrectionTypes] = useState(DEFAULT_CORRECTION_TYPES);
+  const [chapterNumbers, setChapterNumbers] = useState([]);
+  const [incomplete, setIncomplete] = useState([]);
+  const [showIncomplete, setShowIncomplete] = useState(false);
   const cls = classes.find((c) => c.id === classId);
 
-  const load = useCallback(async () => { if (classId) setRecords(await db.fetchCorrectionRecords(userId, classId)); }, [userId, classId]);
+  const load = useCallback(async () => {
+    if (!classId) return;
+    const [recs, types, numbers] = await Promise.all([
+      db.fetchCorrectionRecords(userId, classId), db.fetchCorrectionTypes(userId), db.fetchChapterNumbers(userId, classId),
+    ]);
+    setRecords(recs);
+    setCorrectionTypes([...new Set([...DEFAULT_CORRECTION_TYPES, ...types])]);
+    setChapterNumbers(numbers);
+  }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
 
+  const loadIncomplete = useCallback(async () => {
+    if (!classId || !cls) return;
+    const studentsById = Object.fromEntries(cls.students.map((s) => [s.id, s.name]));
+    setIncomplete(await db.fetchIncompleteTasks(userId, classId, studentsById));
+  }, [userId, classId, cls]);
+  useEffect(() => { if (showIncomplete) loadIncomplete(); }, [showIncomplete, loadIncomplete]);
+
+  const onChapterNumberBlur = async () => {
+    if (!chapterNumber.trim()) { setLinkedConcepts([]); setLinkedExercises([]); return; }
+    const match = await db.fetchChapterNameForNumber(userId, classId, chapterNumber);
+    setLinkedConcepts(match?.concepts || []);
+    setLinkedExercises(match?.exercise_list || []);
+  };
+
   const createRecord = async () => {
-    if (!title.trim() || !cls) return;
-    await db.createCorrectionRecord(userId, classId, date, title, type);
-    setTitle(""); setCreating(false); load();
+    if (!title.trim() || !type.trim() || !cls) return;
+    await db.createCorrectionRecord(userId, classId, date, title, type.trim(), chapterNumber.trim() || null, linkedConcepts, linkedExercises);
+    setTitle(""); setType(""); setChapterNumber(""); setLinkedConcepts([]); setLinkedExercises([]); setCreating(false);
+    load();
   };
   const cycle = async (record, studentId) => {
     const cur = record.marks[studentId] || "blank";
@@ -248,6 +326,14 @@ function CorrectionPanel({ userId, classes }) {
     const marks = { ...record.marks, [studentId]: next };
     await db.updateCorrectionMarks(record.id, marks);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+    if (showIncomplete) loadIncomplete();
+  };
+  const markTaskDone = async (task) => {
+    const record = records.find((r) => r.id === task.recordId);
+    const marks = { ...(record ? record.marks : task.marks), [task.studentId]: "done" };
+    await db.updateCorrectionMarks(task.recordId, marks);
+    setRecords((prev) => prev.map((r) => r.id === task.recordId ? { ...r, marks } : r));
+    setIncomplete((prev) => prev.filter((t) => !(t.recordId === task.recordId && t.studentId === task.studentId)));
   };
   const removeRecord = async (id) => { await db.deleteCorrectionRecord(id); load(); };
 
@@ -262,9 +348,19 @@ function CorrectionPanel({ userId, classes }) {
           <>
             <div className="row-2" style={{ marginTop: 10 }}>
               <input className="input" placeholder="Assignment title" value={title} onChange={(e) => setTitle(e.target.value)} />
-              <select className="input" value={type} onChange={(e) => setType(e.target.value)}><option value="CW">CW</option><option value="HW">HW</option></select>
+              <input className="input" list="correction-types" placeholder="Type (e.g. Homework)" value={type} onChange={(e) => setType(e.target.value)} />
+              <datalist id="correction-types">{correctionTypes.map((t) => <option key={t} value={t} />)}</datalist>
             </div>
             <input type="date" className="input" style={{ marginTop: 8 }} value={date} onChange={(e) => setDate(e.target.value)} />
+            <div className="field-label">Chapter number (optional \u2014 links concepts from the Planner)</div>
+            <input className="input" list="chapter-numbers-correction" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} onBlur={onChapterNumberBlur} />
+            <datalist id="chapter-numbers-correction">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
+            {(linkedConcepts.length > 0 || linkedExercises.length > 0) && (
+              <div className="autofill-hint">
+                {linkedConcepts.length > 0 && <>Concepts: {linkedConcepts.join(", ")}<br /></>}
+                {linkedExercises.length > 0 && <>Exercises: {linkedExercises.join(", ")}</>}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={createRecord}>Create</button>
@@ -272,10 +368,35 @@ function CorrectionPanel({ userId, classes }) {
           </>
         )}
       </div>
+
+      {cls && (
+        <div className="card">
+          <button className="expand-toggle" style={{ paddingTop: 0 }} onClick={() => setShowIncomplete(!showIncomplete)}>
+            {showIncomplete ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Incomplete tasks
+          </button>
+          {showIncomplete && (
+            incomplete.length === 0 ? <div className="card-sub" style={{ marginTop: 8 }}>Nothing marked incomplete for this class.</div> :
+            incomplete.map((t) => (
+              <div className="marks-row" key={`${t.recordId}-${t.studentId}`}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.studentName}</div>
+                  <div className="card-sub">{t.title} <span className="badge-mini">{t.type}</span> \u00b7 <span className="mono">{t.date}</span></div>
+                </div>
+                <button className="btn btn-done" onClick={() => markTaskDone(t)}><Check size={13} /> Done</button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
       {cls && records.map((r) => (
         <div className="card" key={r.id}>
           <div className="card-title-row">
-            <div><div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div><div className="card-sub mono">{r.date}</div></div>
+            <div>
+              <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div>
+              <div className="card-sub mono">{r.date}{r.chapter_number ? ` \u00b7 Ch ${r.chapter_number}` : ""}</div>
+              {r.concepts?.length > 0 && <div className="card-sub">Concepts: {r.concepts.join(", ")}</div>}
+            </div>
             <button className="btn btn-icon" onClick={() => removeRecord(r.id)}><Trash2 size={13} /></button>
           </div>
           <div className="grid-table">
