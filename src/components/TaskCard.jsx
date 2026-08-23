@@ -1,16 +1,17 @@
 import React, { useState } from "react";
-import { Clock, Lock, Star, ChevronRight, ChevronDown, Check, SkipForward } from "lucide-react";
+import { Clock, Lock, Star, ChevronRight, ChevronDown, Check, SkipForward, Star as FallbackIcon } from "lucide-react";
 import ConfirmDelete from "./ConfirmDelete";
-import { CATEGORIES } from "../lib/constants";
+import { ICON_REGISTRY } from "../lib/constants";
 import PhotoStrip from "./PhotoStrip";
 
 function fmtTime(d) { return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
 
 export default function TaskCard({
-  task, popup, onComplete, onSkip, onReset, onEdit, onDelete,
+  task, popup, category, onComplete, onSkip, onReset, onEdit, onDelete,
   onToggleSub, onToggleSet, onAddExercisePhoto, onRemoveExercisePhoto,
 }) {
-  const cat = CATEGORIES[task.category]; const Icon = cat.icon;
+  const cat = category || { label: task.category, color: "#9c9488", icon_key: "star" };
+  const Icon = ICON_REGISTRY[cat.icon_key] || FallbackIcon;
   const isDone = task.status === "done", isSkipped = task.status === "skipped";
   const [expanded, setExpanded] = useState(false);
   const hasSub = (task.subtasks || []).length > 0;

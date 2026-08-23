@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { Plus, CalendarClock } from "lucide-react";
+import { Plus, CalendarClock, Settings2 } from "lucide-react";
 import TaskCard from "../components/TaskCard";
 import AddTaskSheet from "../components/AddTaskSheet";
+import CategoryManager from "../components/CategoryManager";
 import { DateStrip } from "../components/Shared";
 import Spinner from "../components/Spinner";
 import { toast } from "../components/Toast";
@@ -10,14 +11,16 @@ import * as db from "../lib/db";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
-export default function Today({ userId, stats, onStatsChange, now }) {
+export default function Today({ userId, stats, onStatsChange, now, categories, reloadCategories }) {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [showCategories, setShowCategories] = useState(false);
   const [popup, setPopup] = useState(null);
   const isToday = selectedDate === todayKey();
+  const categoriesByKey = useMemo(() => Object.fromEntries(categories.map((c) => [c.key, c])), [categories]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,7 +88,10 @@ export default function Today({ userId, stats, onStatsChange, now }) {
 
   return (
     <div className="page">
-      <DateStrip selectedDate={selectedDate} onChange={setSelectedDate} />
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ flex: 1 }}><DateStrip selectedDate={selectedDate} onChange={setSelectedDate} /></div>
+        <button className="btn btn-icon" style={{ marginBottom: 16 }} onClick={() => setShowCategories(true)} title="Manage categories"><Settings2 size={16} /></button>
+      </div>
       <div className="card">
         <div className="level-top"><span>Level {level}</span><span className="mono">{levelProgress}/100</span></div>
         <div className="level-track"><div className="level-fill" style={{ width: `${levelProgress}%` }} /></div>
@@ -101,6 +107,7 @@ export default function Today({ userId, stats, onStatsChange, now }) {
         <div className="timeline">
           {sorted.map((t) => (
             <TaskCard key={t.id} task={t} popup={popup && popup.id === t.id ? popup.points : null}
+              category={categoriesByKey[t.category]}
               onComplete={completeTask} onSkip={skipTask} onReset={resetTask} onEdit={openEdit}
               onDelete={deleteTaskRow} onToggleSub={toggleSub} onToggleSet={toggleSet}
               onAddExercisePhoto={addExercisePhoto} onRemoveExercisePhoto={removeExercisePhoto} />
@@ -108,7 +115,8 @@ export default function Today({ userId, stats, onStatsChange, now }) {
         </div>
       )}
       <button className="fab" onClick={openAdd}><Plus size={24} /></button>
-      {showForm && <AddTaskSheet editingTask={editingTask} onClose={() => setShowForm(false)} onSubmit={submitForm} onDelete={deleteTaskRow} />}
+      {showForm && <AddTaskSheet editingTask={editingTask} categories={categories} onClose={() => setShowForm(false)} onSubmit={submitForm} onDelete={deleteTaskRow} />}
+      {showCategories && <CategoryManager userId={userId} categories={categories} onClose={() => setShowCategories(false)} onChanged={reloadCategories} />}
     </div>
   );
 }

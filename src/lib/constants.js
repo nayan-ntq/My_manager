@@ -1,15 +1,25 @@
-import { Dumbbell, HeartPulse, BookOpen, Briefcase, CalendarClock } from "lucide-react";
+import { Dumbbell, HeartPulse, BookOpen, Briefcase, CalendarClock, GraduationCap, Coffee, Music, Palette, Star, Target, Plane, Home as HomeIcon, ShoppingCart } from "lucide-react";
 
-export const CATEGORIES = {
-  professional: { label: "Professional", color: "#5B7FDB", icon: Briefcase },
-  gym: { label: "Gym", color: "#E8556B", icon: Dumbbell },
-  health: { label: "Health", color: "#2FA88F", icon: HeartPulse },
-  growth: { label: "Growth", color: "#F2790C", icon: BookOpen },
-  schedule: { label: "Schedule", color: "#8B7FC7", icon: CalendarClock },
+// icon-key registry so user-defined categories (stored as a plain string in the
+// database) can still render a real icon. Add more here any time.
+export const ICON_REGISTRY = {
+  briefcase: Briefcase, dumbbell: Dumbbell, "heart-pulse": HeartPulse, "book-open": BookOpen,
+  "calendar-clock": CalendarClock, "graduation-cap": GraduationCap, coffee: Coffee, music: Music,
+  palette: Palette, star: Star, target: Target, plane: Plane, home: HomeIcon, cart: ShoppingCart,
 };
-export const CATEGORY_ORDER = ["professional", "gym", "health", "growth", "schedule"];
+export const ICON_KEYS = Object.keys(ICON_REGISTRY);
+export const CATEGORY_COLOR_CHOICES = ["#5B7FDB", "#E8556B", "#2FA88F", "#F2790C", "#8B7FC7", "#D9A441", "#4FB3C4", "#C4577A"];
 
-export const TEST_TYPES = ["CT", "IA-1", "IA-2", "Term"];
+// Fallback only \u2014 real categories now come from the task_categories table (per user, editable).
+export const DEFAULT_CATEGORY_SEED = [
+  { key: "professional", label: "Professional", color: "#5B7FDB", icon_key: "briefcase" },
+  { key: "gym", label: "Gym", color: "#E8556B", icon_key: "dumbbell" },
+  { key: "health", label: "Health", color: "#2FA88F", icon_key: "heart-pulse" },
+  { key: "growth", label: "Growth", color: "#F2790C", icon_key: "book-open" },
+  { key: "schedule", label: "Schedule", color: "#8B7FC7", icon_key: "calendar-clock" },
+];
+
+export const DEFAULT_TEST_TYPES = ["CT", "IA-1", "IA-2", "Term"];
 export const CORRECTION_CODES = ["blank", "done", "ab", "ic", "ns"];
 // icon-based marks (safer + crisper than unicode glyphs, which can render as tofu boxes on some devices)
 export const CORRECTION_MARKS = { blank: { icon: "minus" }, done: { icon: "check" }, ab: { text: "AB" }, ic: { text: "IC" }, ns: { text: "NS" } };

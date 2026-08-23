@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
-import { TEST_TYPES, CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_MARKS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_MARKS, UNDERSTANDING_TITLES } from "../lib/constants";
+import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_MARKS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_MARKS, UNDERSTANDING_TITLES } from "../lib/constants";
 import GridMark from "../components/GridMark";
 import ConfirmDelete from "../components/ConfirmDelete";
 import { toast } from "../components/Toast";
@@ -12,9 +12,46 @@ function todayKey() { return new Date().toISOString().slice(0, 10); }
 
 /* ---------- classes ---------- */
 
+function StudentEditSheet({ student, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(student.name);
+  const [rollNo, setRollNo] = useState(student.roll_no || "");
+  const [contact, setContact] = useState(student.contact || "");
+  const [notes, setNotes] = useState(student.notes || "");
+
+  const save = () => {
+    if (!name.trim()) return;
+    onSave({ name: name.trim(), roll_no: rollNo.trim() || null, contact: contact.trim() || null, notes: notes.trim() || null });
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit student</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="field-label">Name</div>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <div className="row-2">
+          <div><div className="field-label">Roll no.</div><input className="input" value={rollNo} onChange={(e) => setRollNo(e.target.value)} /></div>
+          <div><div className="field-label">Contact</div><input className="input" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Phone or email" /></div>
+        </div>
+        <div className="field-label">Notes</div>
+        <textarea className="input textarea" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering about this student" />
+        <div className="sheet-actions">
+          <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={save}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClassesPanel({ userId, classes, reloadClasses }) {
   const [name, setName] = useState(""); const [subject, setSubject] = useState("");
   const [studentInput, setStudentInput] = useState({});
+  const [editingStudent, setEditingStudent] = useState(null);
 
   const addClass = async () => {
     if (!name.trim()) return;
@@ -30,7 +67,13 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
     setStudentInput({ ...studentInput, [classId]: "" });
     reloadClasses();
   };
-  const removeStudent = async (id) => { await db.removeStudent(id); reloadClasses(); };
+  const removeStudent = async (id) => { await db.removeStudent(id); reloadClasses(); toast("Student removed"); };
+  const saveStudent = async (id, patch) => {
+    await db.updateStudent(id, patch);
+    setEditingStudent(null);
+    reloadClasses();
+    toast("Student updated");
+  };
   const removeClass = async (id) => { await db.deleteClass(id); reloadClasses(); toast("Class deleted"); };
 
   return (
@@ -50,7 +93,11 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
             <ConfirmDelete onConfirm={() => removeClass(c.id)} size={14} />
           </div>
           <div className="student-chip-wrap">
-            {c.students.map((s) => <span className="student-chip" key={s.id}>{s.name}<button onClick={() => removeStudent(s.id)}><X size={11} /></button></span>)}
+            {c.students.map((s) => (
+              <button type="button" className="student-chip student-chip-editable" key={s.id} onClick={() => setEditingStudent(s)}>
+                {s.name}{s.roll_no ? ` (${s.roll_no})` : ""}
+              </button>
+            ))}
           </div>
           <div className="row-2" style={{ marginTop: 10 }}>
             <input className="input" placeholder="Add student name" value={studentInput[c.id] || ""} onChange={(e) => setStudentInput({ ...studentInput, [c.id]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addStudent(c.id))} />
@@ -58,6 +105,14 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
           </div>
         </div>
       ))}
+      {editingStudent && (
+        <StudentEditSheet
+          student={editingStudent}
+          onClose={() => setEditingStudent(null)}
+          onSave={(patch) => saveStudent(editingStudent.id, patch)}
+          onDelete={() => removeStudent(editingStudent.id)}
+        />
+      )}
     </div>
   );
 }
@@ -353,11 +408,24 @@ function CorrectionPanel({ userId, classes }) {
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     if (showIncomplete) loadIncomplete();
   };
+  const bulkMarkStatus = async (record, code, studentIds) => {
+    const marks = { ...record.marks };
+    for (const sid of studentIds) marks[sid] = code;
+    await db.updateCorrectionMarks(record.id, marks);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+    if (showIncomplete) loadIncomplete();
+    toast(`Marked whole class: ${CORRECTION_TITLES[code]}`);
+  };
   const cycleUnderstanding = async (record, concept, studentId) => {
     const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
     const next = UNDERSTANDING_TAGS[(UNDERSTANDING_TAGS.indexOf(cur) + 1) % UNDERSTANDING_TAGS.length];
     const conceptMarks = await db.updateCorrectionConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
+  };
+  const bulkMarkUnderstanding = async (record, concept, tag, studentIds) => {
+    const conceptMarks = await db.bulkSetCorrectionConceptMark(record.id, record.concept_marks || {}, studentIds, concept, tag);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
+    toast(`Marked whole class: ${UNDERSTANDING_TITLES[tag]}`);
   };
   const markTaskDone = async (task) => {
     const record = records.find((r) => r.id === task.recordId);
@@ -443,6 +511,15 @@ function CorrectionPanel({ userId, classes }) {
               </div>
               <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />
             </div>
+            <div className="bulk-mark-row" style={{ marginBottom: 8 }}>
+              <span className="bulk-mark-label">Mark all:</span>
+              {CORRECTION_CODES.filter((c) => c !== "blank").map((code) => (
+                <button key={code} type="button" className="bulk-mark-btn" title={CORRECTION_TITLES[code]}
+                  onClick={() => bulkMarkStatus(r, code, cls.students.map((s) => s.id))}>
+                  <GridMark mark={CORRECTION_MARKS[code]} size={12} />
+                </button>
+              ))}
+            </div>
             <div className="grid-table">
               {cls.students.map((s) => {
                 const code = r.marks[s.id] || "blank";
@@ -461,7 +538,18 @@ function CorrectionPanel({ userId, classes }) {
                 </button>
                 {isOpen && r.concepts.map((concept) => (
                   <div className="concept-block" key={concept}>
-                    <div className="concept-block-title">{concept}</div>
+                    <div className="concept-block-head">
+                      <div className="concept-block-title">{concept}</div>
+                      <div className="bulk-mark-row">
+                        <span className="bulk-mark-label">Mark all:</span>
+                        {UNDERSTANDING_TAGS.filter((t) => t !== "blank").map((tag) => (
+                          <button key={tag} type="button" className="bulk-mark-btn" title={UNDERSTANDING_TITLES[tag]}
+                            onClick={() => bulkMarkUnderstanding(r, concept, tag, cls.students.map((s) => s.id))}>
+                            <GridMark mark={UNDERSTANDING_MARKS[tag]} size={12} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="grid-table">
                       {cls.students.map((s) => {
                         const tag = r.concept_marks?.[s.id]?.[concept] || "blank";
@@ -475,7 +563,7 @@ function CorrectionPanel({ userId, classes }) {
                     </div>
                   </div>
                 ))}
-                {isOpen && <div className="legend">tap to cycle  |  understood  ->  not understood  ->  not done</div>}
+                {isOpen && <div className="legend">tap "mark all" to fill the whole class, then tap individual cells for exceptions</div>}
               </>
             )}
           </div>
@@ -526,6 +614,7 @@ function PerformancePanel({ userId, classes }) {
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState(""); const [testType, setTestType] = useState("CT"); const [maxMarks, setMaxMarks] = useState(20);
+  const [testTypes, setTestTypes] = useState(DEFAULT_TEST_TYPES);
   const [passingMarks, setPassingMarks] = useState("");
   const [chapterCount, setChapterCount] = useState("");
   const [exercises, setExercises] = useState("");
@@ -536,7 +625,12 @@ function PerformancePanel({ userId, classes }) {
   const [showMore, setShowMore] = useState(false);
   const cls = classes.find((c) => c.id === classId);
 
-  const load = useCallback(async () => { if (classId) setRecords(await db.fetchPerformanceRecords(userId, classId)); }, [userId, classId]);
+  const load = useCallback(async () => {
+    if (!classId) return;
+    const [recs, types] = await Promise.all([db.fetchPerformanceRecords(userId, classId), db.fetchTestTypes(userId)]);
+    setRecords(recs);
+    setTestTypes([...new Set([...DEFAULT_TEST_TYPES, ...types])]);
+  }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
 
   const createRecord = async () => {
@@ -566,6 +660,11 @@ function PerformancePanel({ userId, classes }) {
     const conceptMarks = await db.updateConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
+  const bulkMarkConceptTag = async (record, concept, tag, studentIds) => {
+    const conceptMarks = await db.bulkSetConceptMark(record.id, record.concept_marks || {}, studentIds, concept, tag);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
+    toast(`Marked whole class: ${CONCEPT_TAG_TITLES[tag]}`);
+  };
   const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); toast("Test record deleted"); };
 
   const statsFor = (r) => {
@@ -593,7 +692,8 @@ function PerformancePanel({ userId, classes }) {
           <>
             <div className="row-2" style={{ marginTop: 10 }}>
               <input className="input" placeholder="Test title" value={title} onChange={(e) => setTitle(e.target.value)} />
-              <select className="input" value={testType} onChange={(e) => setTestType(e.target.value)}>{TEST_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+              <input className="input" list="test-types" placeholder="Test type (e.g. CT)" value={testType} onChange={(e) => setTestType(e.target.value)} />
+              <datalist id="test-types">{testTypes.map((t) => <option key={t} value={t} />)}</datalist>
             </div>
             <div className="field-label">Max marks</div>
             <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
@@ -677,7 +777,18 @@ function PerformancePanel({ userId, classes }) {
                 </button>
                 {isOpen && r.concepts.map((concept) => (
                   <div className="concept-block" key={concept}>
-                    <div className="concept-block-title">{concept}</div>
+                    <div className="concept-block-head">
+                      <div className="concept-block-title">{concept}</div>
+                      <div className="bulk-mark-row">
+                        <span className="bulk-mark-label">Mark all:</span>
+                        {CONCEPT_TAGS.filter((t) => t !== "blank").map((tag) => (
+                          <button key={tag} type="button" className="bulk-mark-btn" title={CONCEPT_TAG_TITLES[tag]}
+                            onClick={() => bulkMarkConceptTag(r, concept, tag, cls.students.map((s) => s.id))}>
+                            <GridMark mark={CONCEPT_MARKS[tag]} size={12} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="grid-table">
                       {cls.students.map((s) => {
                         const tag = r.concept_marks?.[s.id]?.[concept] || "blank";
@@ -691,7 +802,7 @@ function PerformancePanel({ userId, classes }) {
                     </div>
                   </div>
                 ))}
-                {isOpen && <div className="legend">tap to cycle  |  accurate  ->  application gap  ->  silly mistake  ->  concept gap</div>}
+                {isOpen && <div className="legend">tap "mark all" to fill the whole class, then tap individual cells for exceptions</div>}
               </>
             )}
           </div>

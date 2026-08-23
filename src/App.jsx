@@ -15,6 +15,7 @@ export default function App() {
   const [tab, setTab] = useState("today");
   const [stats, setStats] = useState({ points: 0, streak: 0, longest_streak: 0, last_active_day: null });
   const [classes, setClasses] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [ready, setReady] = useState(false);
   const [now, setNow] = useState(new Date());
 
@@ -29,11 +30,16 @@ export default function App() {
     setClasses(await db.fetchClasses(session.user.id));
   }, [session?.user?.id]);
 
+  const reloadCategories = useCallback(async () => {
+    if (!session?.user) return;
+    setCategories(await db.fetchCategories(session.user.id));
+  }, [session?.user?.id]);
+
   const bootstrapUser = useCallback(async (userId) => {
     setReady(false);
     await db.ensureSeeded(userId);
-    const [meta, cls] = await Promise.all([db.fetchMeta(userId), db.fetchClasses(userId)]);
-    setStats(meta); setClasses(cls);
+    const [meta, cls, cats] = await Promise.all([db.fetchMeta(userId), db.fetchClasses(userId), db.fetchCategories(userId)]);
+    setStats(meta); setClasses(cls); setCategories(cats);
     setReady(true);
   }, []);
 
@@ -74,7 +80,7 @@ export default function App() {
         </div>
       </div>
 
-      {tab === "today" && <Today userId={userId} stats={stats} onStatsChange={handleStatsChange} now={now} />}
+      {tab === "today" && <Today userId={userId} stats={stats} onStatsChange={handleStatsChange} now={now} categories={categories} reloadCategories={reloadCategories} />}
       {tab === "teach" && <Teach userId={userId} classes={classes} reloadClasses={reloadClasses} />}
       {tab === "insights" && <Insights userId={userId} stats={stats} classes={classes} />}
       {tab === "coach" && <Coach userId={userId} stats={stats} classes={classes} />}

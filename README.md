@@ -143,3 +143,39 @@ project) and is included in `supabase/schema.sql` for a fresh setup.
   richer empty states, refined touch feedback throughout.
 
 No database changes in this update - purely front-end.
+
+## Recent update: editable categories/types, bulk marking, student details, deeper Coach access
+
+- **Task categories are now fully editable** \u2014 tap the gear icon next to
+  the date strip on Today to add, rename, recolor, or delete categories.
+  No longer limited to the original 5.
+- **Test types are free-text with a growing dropdown**, same pattern as
+  correction types.
+- **Bulk "mark all" actions** on every grid (correction status, concept
+  understanding, performance concept breakdown) \u2014 mark the whole class at
+  once, then tap individual cells only for exceptions. This replaces the old
+  one-tap-per-student-per-cell flow.
+- **Student records now support roll number, contact, and notes**, and are
+  editable \u2014 tap any student chip in the Classes tab to open an edit sheet
+  (rename, update details, or delete).
+- **Coach now has full concept-level access** \u2014 per-student marks and
+  per-concept understanding/accuracy breakdowns for the last 15 records per
+  class are included in its data snapshot, not just summary counts. It can
+  now answer things like "which concepts is this student weak on" with real
+  evidence.
+
+## Still in progress (from the same request, not yet built)
+
+The following were part of the same ask but are large enough to need their
+own build pass \u2014 flagging here so nothing gets lost:
+- Gemini-vision planner-photo import, matched against a weekly timetable
+  (the `timetable_slots` and `import_logs` tables are already in the schema
+  for this)
+- Photo \u2192 Gemini \u2192 CSV \u2192 direct database import pipeline
+- Workout plan / timetable import for other people, plus AI-suggested
+  schedule optimization
+- Meal-timing suggestions tied to gym schedule
+- Notification reminders for upcoming tasks
+
+Database changes for this update are already applied to your live Supabase
+project and included in `supabase/schema.sql`.

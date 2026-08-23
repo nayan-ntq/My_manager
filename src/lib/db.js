@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { SEED_TASKS, SEED_CLASSES } from "./constants";
+import { SEED_TASKS, SEED_CLASSES, DEFAULT_CATEGORY_SEED } from "./constants";
 
 /* ---------- auth ---------- */
 
@@ -122,6 +122,28 @@ export async function updateSet(id, patch) {
 
 /* ---------- personal: stats/profile ---------- */
 
+/* ---------- personal: task categories (user-editable) ---------- */
+
+export async function fetchCategories(userId) {
+  const { data, error } = await supabase.from("task_categories").select("*").eq("user_id", userId).order("position");
+  if (error) throw error;
+  return data || [];
+}
+export async function createCategory(userId, key, label, color, iconKey, position) {
+  const { data, error } = await supabase.from("task_categories")
+    .insert({ user_id: userId, key, label, color, icon_key: iconKey, position }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateCategory(id, patch) {
+  const { error } = await supabase.from("task_categories").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function deleteCategory(id) {
+  const { error } = await supabase.from("task_categories").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function fetchMeta(userId) {
   const { data, error } = await supabase.from("user_meta").select("*").eq("user_id", userId).maybeSingle();
   if (error) throw error;
@@ -154,6 +176,11 @@ export async function deleteClass(id) {
 }
 export async function addStudent(userId, classId, name, position) {
   const { data, error } = await supabase.from("students").insert({ user_id: userId, class_id: classId, name, position }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateStudent(id, patch) {
+  const { data, error } = await supabase.from("students").update(patch).eq("id", id).select().single();
   if (error) throw error;
   return data;
 }
@@ -280,6 +307,14 @@ export async function updateCorrectionConceptMark(id, currentConceptMarks, stude
   if (error) throw error;
   return conceptMarks;
 }
+/** Sets every given student's tag for one concept in a single write \u2014 "mark whole class X", then tap exceptions. */
+export async function bulkSetCorrectionConceptMark(id, currentConceptMarks, studentIds, concept, tag) {
+  const conceptMarks = { ...currentConceptMarks };
+  for (const sid of studentIds) conceptMarks[sid] = { ...(conceptMarks[sid] || {}), [concept]: tag };
+  const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
+  if (error) throw error;
+  return conceptMarks;
+}
 export async function deleteCorrectionRecord(id) {
   const { error } = await supabase.from("correction_records").delete().eq("id", id);
   if (error) throw error;
@@ -290,6 +325,14 @@ export async function fetchCorrectionTypes(userId) {
   if (error) throw error;
   const seen = new Set();
   for (const row of data || []) if (row.type?.trim()) seen.add(row.type.trim());
+  return [...seen];
+}
+/** Every distinct test type this user has ever used - admin-editable, grows as you type new ones. */
+export async function fetchTestTypes(userId) {
+  const { data, error } = await supabase.from("performance_records").select("test_type").eq("user_id", userId);
+  if (error) throw error;
+  const seen = new Set();
+  for (const row of data || []) if (row.test_type?.trim()) seen.add(row.test_type.trim());
   return [...seen];
 }
 /** Every "incomplete" (ic) mark across a class's correction records, flattened for a follow-up list. */
@@ -347,6 +390,14 @@ export async function updateConceptMark(id, currentConceptMarks, studentId, conc
   if (error) throw error;
   return conceptMarks;
 }
+/** Sets every given student's tag for one concept in a single write \u2014 "mark whole class X", then tap exceptions. */
+export async function bulkSetConceptMark(id, currentConceptMarks, studentIds, concept, tag) {
+  const conceptMarks = { ...currentConceptMarks };
+  for (const sid of studentIds) conceptMarks[sid] = { ...(conceptMarks[sid] || {}), [concept]: tag };
+  const { error } = await supabase.from("performance_records").update({ concept_marks: conceptMarks }).eq("id", id);
+  if (error) throw error;
+  return conceptMarks;
+}
 export async function deletePerformanceRecord(id) {
   const { error } = await supabase.from("performance_records").delete().eq("id", id);
   if (error) throw error;
@@ -354,7 +405,18 @@ export async function deletePerformanceRecord(id) {
 
 /* ---------- first-login seeding ---------- */
 
+export async function ensureCategoriesSeeded(userId) {
+  const { count, error } = await supabase.from("task_categories").select("id", { count: "exact", head: true }).eq("user_id", userId);
+  if (error) throw error;
+  if (count && count > 0) return;
+  for (let i = 0; i < DEFAULT_CATEGORY_SEED.length; i++) {
+    const c = DEFAULT_CATEGORY_SEED[i];
+    await createCategory(userId, c.key, c.label, c.color, c.icon_key, i);
+  }
+}
+
 export async function ensureSeeded(userId) {
+  await ensureCategoriesSeeded(userId);
   const { count, error } = await supabase.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", userId);
   if (error) throw error;
   if (count && count > 0) return;
@@ -421,18 +483,32 @@ export async function fetchFullAppData(userId) {
           (workingDays.length * cls.students.length)) * 100)
       : null;
 
-    const performanceSummary = performance.map((r) => {
+    const performanceSummary = performance.slice(0, 15).map((r) => {
       const vals = Object.entries(r.marks)
         .filter(([sid]) => !(r.absent || {})[sid])
         .map(([, v]) => v).filter((v) => v !== null && v !== undefined);
       const stats = statSummary(vals);
       const passCount = r.passing_marks != null ? vals.filter((v) => v >= r.passing_marks).length : null;
+      const marksByName = Object.fromEntries(Object.entries(r.marks).map(([sid, v]) => [studentsById[sid] || sid, v]));
+      const conceptBreakdown = (r.concepts || []).map((concept) => ({
+        concept,
+        byStudent: Object.fromEntries(cls.students.map((s) => [s.name, r.concept_marks?.[s.id]?.[concept] || "blank"])),
+      }));
       return {
         title: r.title, testType: r.test_type, maxMarks: r.max_marks, passingMarks: r.passing_marks,
-        concepts: r.concepts, stats, passCount, absentCount: Object.values(r.absent || {}).filter(Boolean).length,
+        stats, passCount, absentCount: Object.values(r.absent || {}).filter(Boolean).length,
+        marksByStudent: marksByName, conceptBreakdown,
       };
     });
 
+    const correctionDetail = correction.slice(0, 15).map((r) => ({
+      title: r.title, type: r.type, date: r.date, chapterNumber: r.chapter_number,
+      statusByStudent: Object.fromEntries(cls.students.map((s) => [s.name, r.marks?.[s.id] || "blank"])),
+      conceptUnderstanding: (r.concepts || []).map((concept) => ({
+        concept,
+        byStudent: Object.fromEntries(cls.students.map((s) => [s.name, r.concept_marks?.[s.id]?.[concept] || "blank"])),
+      })),
+    }));
     const incompleteCount = correction.reduce((sum, r) => sum + Object.values(r.marks || {}).filter((v) => v === "ic").length, 0);
     const notSubmittedCount = correction.reduce((sum, r) => sum + Object.values(r.marks || {}).filter((v) => v === "ns").length, 0);
 
@@ -441,6 +517,7 @@ export async function fetchFullAppData(userId) {
       attendanceRatePct: attendanceRate,
       plannerChapters: planner.map((p) => ({ date: p.date, chapterNumber: p.chapter_number, chapter: p.chapter, concepts: p.concepts })),
       correctionSummary: { totalRecords: correction.length, incompleteCount, notSubmittedCount },
+      correctionDetail,
       performanceSummary,
     };
   }));

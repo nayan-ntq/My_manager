@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { X, Trash2, Plus } from "lucide-react";
-import { CATEGORIES, CATEGORY_ORDER } from "../lib/constants";
+import { X, Plus, Star as FallbackIcon } from "lucide-react";
+import { ICON_REGISTRY } from "../lib/constants";
+import ConfirmDelete from "./ConfirmDelete";
 import PhotoStrip from "./PhotoStrip";
 
-function blank() {
-  return { title: "", category: "professional", time: "09:00", duration: 15, anchored: false, important: false, subtasks: [], exercises: [] };
+function blank(categories) {
+  return { title: "", category: categories[0]?.key || "", time: "09:00", duration: 15, anchored: false, important: false, subtasks: [], exercises: [] };
 }
 
-export default function AddTaskSheet({ editingTask, onClose, onSubmit, onDelete }) {
+export default function AddTaskSheet({ editingTask, categories, onClose, onSubmit, onDelete }) {
   function toFormShape(t) {
     return {
       title: t.title, category: t.category, time: t.time?.slice(0, 5) || "09:00",
@@ -16,8 +17,8 @@ export default function AddTaskSheet({ editingTask, onClose, onSubmit, onDelete 
       exercises: (t.exercises || []).map((e) => ({ name: e.name, photos: e.photos || [], sets: (e.sets || []).map((s) => ({ reps: s.reps, weight: s.weight })) })),
     };
   }
-  const [form, setForm] = useState(editingTask ? toFormShape(editingTask) : blank());
-  useEffect(() => { setForm(editingTask ? toFormShape(editingTask) : blank()); }, [editingTask]);
+  const [form, setForm] = useState(editingTask ? toFormShape(editingTask) : blank(categories));
+  useEffect(() => { setForm(editingTask ? toFormShape(editingTask) : blank(categories)); }, [editingTask]);
 
   const isGym = form.category === "gym";
   const submit = (e) => { e.preventDefault(); if (!form.title.trim()) return; onSubmit(form); };
@@ -46,10 +47,10 @@ export default function AddTaskSheet({ editingTask, onClose, onSubmit, onDelete 
         <input className="input" placeholder="e.g. Stretch" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus />
         <div className="field-label">Category</div>
         <div className="cat-select">
-          {CATEGORY_ORDER.map((key) => {
-            const c = CATEGORIES[key]; const Icon = c.icon;
+          {categories.map((c) => {
+            const Icon = ICON_REGISTRY[c.icon_key] || FallbackIcon;
             return (
-              <div key={key} className={`cat-opt ${form.category === key ? "active" : ""}`} style={{ color: form.category === key ? c.color : undefined }} onClick={() => setForm({ ...form, category: key })}>
+              <div key={c.key} className={`cat-opt ${form.category === c.key ? "active" : ""}`} style={{ color: form.category === c.key ? c.color : undefined }} onClick={() => setForm({ ...form, category: c.key })}>
                 <Icon size={16} />{c.label}
               </div>
             );
@@ -109,7 +110,7 @@ export default function AddTaskSheet({ editingTask, onClose, onSubmit, onDelete 
         )}
 
         <div className="sheet-actions">
-          {editingTask && <button type="button" className="btn btn-danger" onClick={() => { onDelete(editingTask.id); onClose(); }}><Trash2 size={14} /></button>}
+          {editingTask && <ConfirmDelete onConfirm={() => { onDelete(editingTask.id); onClose(); }} size={14} />}
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary">{editingTask ? "Save" : "Add task"}</button>
         </div>
