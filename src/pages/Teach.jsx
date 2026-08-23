@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX } from "lucide-react";
+import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX, CalendarClock } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
+import PhotoImportButton from "../components/PhotoImportButton";
+import CsvReviewSheet from "../components/CsvReviewSheet";
+import { parseCSV, matchStudentName } from "../lib/visionImport";
 import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_MARKS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_MARKS, UNDERSTANDING_TITLES } from "../lib/constants";
 import GridMark from "../components/GridMark";
 import ConfirmDelete from "../components/ConfirmDelete";
@@ -52,6 +55,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
   const [name, setName] = useState(""); const [subject, setSubject] = useState("");
   const [studentInput, setStudentInput] = useState({});
   const [editingStudent, setEditingStudent] = useState(null);
+  const [rosterImport, setRosterImport] = useState(null); // { classId, csv }
 
   const addClass = async () => {
     if (!name.trim()) return;
@@ -75,6 +79,20 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
     toast("Student updated");
   };
   const removeClass = async (id) => { await db.deleteClass(id); reloadClasses(); toast("Class deleted"); };
+
+  const importRoster = async (classId, rows) => {
+    const cls = classes.find((c) => c.id === classId);
+    let position = cls.students.length;
+    for (const row of rows) {
+      const rowName = row.name?.trim();
+      if (!rowName) continue;
+      await db.addStudent(userId, classId, rowName, position++, row.roll_no ? { roll_no: row.roll_no.trim() } : undefined);
+    }
+    await db.createImportLog(userId, "roster", cls.name, rosterImport.csv, rows.length);
+    setRosterImport(null);
+    reloadClasses();
+    toast(`Imported ${rows.length} students`);
+  };
 
   return (
     <div>
@@ -103,6 +121,9 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
             <input className="input" placeholder="Add student name" value={studentInput[c.id] || ""} onChange={(e) => setStudentInput({ ...studentInput, [c.id]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addStudent(c.id))} />
             <button type="button" className="btn btn-ghost" onClick={() => addStudent(c.id)}><UserPlus size={14} /></button>
           </div>
+          <div style={{ marginTop: 8 }}>
+            <PhotoImportButton kind="roster" onResult={({ csv }) => setRosterImport({ classId: c.id, csv })} label="Import roster from photo" />
+          </div>
         </div>
       ))}
       {editingStudent && (
@@ -111,6 +132,15 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
           onClose={() => setEditingStudent(null)}
           onSave={(patch) => saveStudent(editingStudent.id, patch)}
           onDelete={() => removeStudent(editingStudent.id)}
+        />
+      )}
+      {rosterImport && (
+        <CsvReviewSheet
+          title="Import roster"
+          csv={rosterImport.csv}
+          columns={["name", "roll_no"]}
+          onClose={() => setRosterImport(null)}
+          onConfirm={(rows) => importRoster(rosterImport.classId, rows)}
         />
       )}
     </div>
@@ -154,6 +184,22 @@ function PlannerPanel({ userId, classes }) {
     }
   };
 
+  const applyPhotoImport = ({ data }) => {
+    setForm((f) => ({
+      ...f,
+      chapter_number: data.chapter_number || f.chapter_number,
+      chapter: data.chapter || f.chapter,
+      objectives: data.objectives || f.objectives,
+      methodology: data.methodology || f.methodology,
+      resources: data.resources || f.resources,
+      assignment: data.assignment || f.assignment,
+      reflection: data.reflection || f.reflection,
+      conceptsInput: (data.concepts || []).length ? data.concepts.join(", ") : f.conceptsInput,
+      exercisesInput: (data.exercise_list || []).length ? data.exercise_list.join(", ") : f.exercisesInput,
+    }));
+    toast("Filled in from photo \u2014 review before saving");
+  };
+
   const save = async () => {
     if (!classId || !form.chapter.trim()) return;
     const payload = {
@@ -175,7 +221,10 @@ function PlannerPanel({ userId, classes }) {
   return (
     <div>
       <div className="card">
-        <div className="card-title">Daily / weekly planner entry</div>
+        <div className="card-title-row">
+          <div className="card-title" style={{ marginBottom: 0 }}>Daily / weekly planner entry</div>
+          <PhotoImportButton kind="planner" context={{ classHint: classes.find((c) => c.id === classId)?.name }} onResult={applyPhotoImport} />
+        </div>
         <div className="field-label">Class</div>
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />
         <div className="field-label">Date</div>
@@ -355,6 +404,7 @@ function CorrectionPanel({ userId, classes }) {
   const [showIncomplete, setShowIncomplete] = useState(false);
   const [expanded, setExpanded] = useState({});
   const [showMore, setShowMore] = useState(false);
+  const [marksImport, setMarksImport] = useState(null); // { record, csv }
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -415,6 +465,21 @@ function CorrectionPanel({ userId, classes }) {
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     if (showIncomplete) loadIncomplete();
     toast(`Marked whole class: ${CORRECTION_TITLES[code]}`);
+  };
+  const importCorrectionMarks = async (record, rows) => {
+    const marks = { ...record.marks };
+    const validCodes = new Set(CORRECTION_CODES);
+    let matched = 0;
+    for (const row of rows) {
+      const student = matchStudentName(row.student_name || "", cls.students);
+      const code = (row.status || "").trim().toLowerCase();
+      if (student && validCodes.has(code)) { marks[student.id] = code; matched++; }
+    }
+    await db.updateCorrectionMarks(record.id, marks);
+    await db.createImportLog(userId, "correction", record.title, marksImport.csv, rows.length);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+    setMarksImport(null);
+    toast(`Matched ${matched} of ${rows.length} students`);
   };
   const cycleUnderstanding = async (record, concept, studentId) => {
     const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
@@ -519,6 +584,7 @@ function CorrectionPanel({ userId, classes }) {
                   <GridMark mark={CORRECTION_MARKS[code]} size={12} />
                 </button>
               ))}
+              <PhotoImportButton kind="correction" context={{ students: cls.students.map((s) => s.name) }} onResult={({ csv }) => setMarksImport({ record: r, csv })} label="From photo" />
             </div>
             <div className="grid-table">
               {cls.students.map((s) => {
@@ -569,6 +635,15 @@ function CorrectionPanel({ userId, classes }) {
           </div>
         );
       })}
+      {marksImport && (
+        <CsvReviewSheet
+          title="Import correction marks"
+          csv={marksImport.csv}
+          columns={["student_name", "status"]}
+          onClose={() => setMarksImport(null)}
+          onConfirm={(rows) => importCorrectionMarks(marksImport.record, rows)}
+        />
+      )}
     </div>
   );
 }
@@ -623,6 +698,7 @@ function PerformancePanel({ userId, classes }) {
   const [expanded, setExpanded] = useState({});
   const [showTrends, setShowTrends] = useState(false);
   const [showMore, setShowMore] = useState(false);
+  const [marksImport, setMarksImport] = useState(null); // { record, csv }
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -666,6 +742,20 @@ function PerformancePanel({ userId, classes }) {
     toast(`Marked whole class: ${CONCEPT_TAG_TITLES[tag]}`);
   };
   const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); toast("Test record deleted"); };
+  const importPerformanceMarks = async (record, rows) => {
+    const marks = { ...record.marks };
+    let matched = 0;
+    for (const row of rows) {
+      const student = matchStudentName(row.student_name || "", cls.students);
+      const val = parseFloat(row.marks);
+      if (student && !isNaN(val)) { marks[student.id] = val; matched++; }
+    }
+    await db.updatePerformanceMarks(record.id, marks);
+    await db.createImportLog(userId, "performance", record.title, marksImport.csv, rows.length);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+    setMarksImport(null);
+    toast(`Matched ${matched} of ${rows.length} students`);
+  };
 
   const statsFor = (r) => {
     const vals = Object.entries(r.marks).filter(([sid]) => !(r.absent || {})[sid]).map(([, v]) => v).filter((v) => v !== null && v !== undefined);
@@ -756,6 +846,9 @@ function PerformancePanel({ userId, classes }) {
               </div>
               <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />
             </div>
+            <div style={{ marginBottom: 8 }}>
+              <PhotoImportButton kind="performance" context={{ students: cls.students.map((s) => s.name) }} onResult={({ csv }) => setMarksImport({ record: r, csv })} label="Import marks from photo" />
+            </div>
             {cls.students.map((s) => {
               const isAbsent = !!(r.absent || {})[s.id];
               return (
@@ -808,6 +901,126 @@ function PerformancePanel({ userId, classes }) {
           </div>
         );
       })}
+      {marksImport && (
+        <CsvReviewSheet
+          title="Import test marks"
+          csv={marksImport.csv}
+          columns={["student_name", "marks"]}
+          onClose={() => setMarksImport(null)}
+          onConfirm={(rows) => importPerformanceMarks(marksImport.record, rows)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------- shell ---------- */
+
+/* ---------- timetable ---------- */
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function TimetablePanel({ userId, classes }) {
+  const [slots, setSlots] = useState([]);
+  const [dayOfWeek, setDayOfWeek] = useState(1);
+  const [classId, setClassId] = useState(classes[0]?.id || "");
+  useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("");
+  const [label, setLabel] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [ttImport, setTtImport] = useState(null); // csv string
+
+  const load = useCallback(async () => { setSlots(await db.fetchTimetable(userId)); }, [userId]);
+  useEffect(() => { load(); }, [load]);
+
+  const addSlot = async () => {
+    if (!classId) return;
+    await db.createTimetableSlot(userId, classId, dayOfWeek, startTime, endTime || null, label.trim() || null, slots.length);
+    setLabel(""); setCreating(false);
+    load();
+    toast("Timetable slot added");
+  };
+  const removeSlot = async (id) => { await db.deleteTimetableSlot(id); load(); toast("Slot removed"); };
+
+  const importTimetable = async (rows) => {
+    let imported = 0;
+    for (const row of rows) {
+      const day = parseInt(row.day_of_week, 10);
+      if (isNaN(day) || day < 0 || day > 6 || !row.start_time) continue;
+      const cls = classes.find((c) => c.name.toLowerCase().trim() === (row.class_name || "").toLowerCase().trim())
+        || classes.find((c) => c.name.toLowerCase().includes((row.class_name || "").toLowerCase().trim()));
+      if (!cls) continue;
+      await db.createTimetableSlot(userId, cls.id, day, row.start_time, row.end_time || null, row.label || null, slots.length + imported);
+      imported++;
+    }
+    await db.createImportLog(userId, "timetable", "Weekly timetable", ttImport, rows.length);
+    setTtImport(null);
+    load();
+    toast(`Imported ${imported} of ${rows.length} slots`);
+  };
+
+  const byDay = DAY_LABELS.map((_, i) => slots.filter((s) => s.day_of_week === i));
+
+  return (
+    <div>
+      <div className="card">
+        <div className="card-title-row">
+          <div className="card-title" style={{ marginBottom: 0 }}>Weekly timetable</div>
+          <PhotoImportButton kind="timetable" onResult={({ csv }) => setTtImport(csv)} label="Import from photo" />
+        </div>
+        {!creating ? (
+          <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={() => setCreating(true)}><Plus size={14} /> Add slot</button>
+        ) : (
+          <>
+            <div className="field-label">Day</div>
+            <select className="input" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
+              {DAY_LABELS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+            </select>
+            <div className="field-label">Class</div>
+            <ClassPicker classes={classes} value={classId} onChange={setClassId} />
+            <div className="row-2">
+              <div><div className="field-label">Start time</div><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></div>
+              <div><div className="field-label">End time (optional)</div><input type="time" className="input" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></div>
+            </div>
+            <div className="field-label">Label (optional)</div>
+            <input className="input" placeholder="e.g. Period 3" value={label} onChange={(e) => setLabel(e.target.value)} />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button className="btn btn-ghost" onClick={() => setCreating(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={addSlot}>Add</button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        {byDay.every((d) => d.length === 0) ? (
+          <div className="card-sub">No timetable slots yet. Add one above, or import a photo of your timetable.</div>
+        ) : DAY_LABELS.map((day, i) => byDay[i].length > 0 && (
+          <div key={day}>
+            <div className="timetable-day-header">{day}</div>
+            {byDay[i].map((s) => (
+              <div className="timetable-slot-row" key={s.id}>
+                <div>
+                  <span className="mono" style={{ fontSize: 12.5, fontWeight: 700 }}>{s.start_time?.slice(0, 5)}{s.end_time ? ` - ${s.end_time.slice(0, 5)}` : ""}</span>
+                  {" "}{s.classes?.name || "Unknown class"}{s.label ? ` (${s.label})` : ""}
+                </div>
+                <ConfirmDelete onConfirm={() => removeSlot(s.id)} size={13} />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {ttImport && (
+        <CsvReviewSheet
+          title="Import timetable"
+          csv={ttImport}
+          columns={["day_of_week", "start_time", "end_time", "class_name", "label"]}
+          onClose={() => setTtImport(null)}
+          onConfirm={importTimetable}
+        />
+      )}
     </div>
   );
 }
@@ -825,6 +1038,7 @@ export default function Teach({ userId, classes, reloadClasses }) {
           { value: "correction", label: "Correction", icon: Check },
           { value: "performance", label: "Scores", icon: BarChart3 },
           { value: "absences", label: "Absences", icon: UserX },
+          { value: "timetable", label: "Timetable", icon: CalendarClock },
           { value: "classes", label: "Classes", icon: Users },
         ]}
         value={sub} onChange={setSub}
@@ -834,6 +1048,7 @@ export default function Teach({ userId, classes, reloadClasses }) {
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} />}
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} />}
       {sub === "absences" && <AbsencePanel userId={userId} classes={classes} />}
+      {sub === "timetable" && <TimetablePanel userId={userId} classes={classes} />}
       {sub === "classes" && <ClassesPanel userId={userId} classes={classes} reloadClasses={reloadClasses} />}
     </div>
   );

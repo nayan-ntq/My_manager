@@ -67,7 +67,7 @@ export default function App() {
       <ToastHost />
       <div className="top-bar">
         <div className="top-left">
-          <div className="logo-mark"><span className="logo-letter">M</span><span className="logo-bar" /></div>
+          <div className="logo-mark"><img src="/icon-192.png" alt="" /></div>
           <div>
             <h1 className="brand-title">My Manager</h1>
             <div className="brand-sub">{now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>

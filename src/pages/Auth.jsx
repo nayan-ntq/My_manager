@@ -28,11 +28,13 @@ export default function Auth() {
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <div className="top-left" style={{ marginBottom: 22 }}>
-          <div className="logo-mark"><span className="logo-letter">M</span><span className="logo-bar" /></div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+          <img src="/icon-192.png" alt="" style={{ width: 64, height: 64 }} />
+        </div>
+        <div className="top-left" style={{ marginBottom: 22, justifyContent: "center" }}>
           <div>
             <div className="brand-title">My Manager</div>
-            <div className="brand-sub">Personal + teaching coach</div>
+            <div className="brand-sub" style={{ textAlign: "center" }}>Personal + teaching coach</div>
           </div>
         </div>
         <form onSubmit={submit}>

@@ -174,8 +174,8 @@ export async function deleteClass(id) {
   const { error } = await supabase.from("classes").delete().eq("id", id);
   if (error) throw error;
 }
-export async function addStudent(userId, classId, name, position) {
-  const { data, error } = await supabase.from("students").insert({ user_id: userId, class_id: classId, name, position }).select().single();
+export async function addStudent(userId, classId, name, position, extra) {
+  const { data, error } = await supabase.from("students").insert({ user_id: userId, class_id: classId, name, position, ...extra }).select().single();
   if (error) throw error;
   return data;
 }
@@ -187,6 +187,51 @@ export async function updateStudent(id, patch) {
 export async function removeStudent(id) {
   const { error } = await supabase.from("students").delete().eq("id", id);
   if (error) throw error;
+}
+
+/* ---------- teaching: weekly timetable ---------- */
+
+export async function fetchTimetable(userId) {
+  const { data, error } = await supabase.from("timetable_slots").select("*, classes(name, subject)").eq("user_id", userId).order("day_of_week").order("start_time");
+  if (error) throw error;
+  return data || [];
+}
+export async function createTimetableSlot(userId, classId, dayOfWeek, startTime, endTime, label, position) {
+  const { data, error } = await supabase.from("timetable_slots")
+    .insert({ user_id: userId, class_id: classId, day_of_week: dayOfWeek, start_time: startTime, end_time: endTime || null, label: label || null, position })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+export async function deleteTimetableSlot(id) {
+  const { error } = await supabase.from("timetable_slots").delete().eq("id", id);
+  if (error) throw error;
+}
+/** Which class(es) are scheduled on a given day-of-week (0=Sunday), sorted by time \u2014 powers "today's class" auto-matching. */
+export async function fetchTimetableForDay(userId, dayOfWeek) {
+  const { data, error } = await supabase.from("timetable_slots").select("*, classes(name, subject)")
+    .eq("user_id", userId).eq("day_of_week", dayOfWeek).order("start_time");
+  if (error) throw error;
+  return data || [];
+}
+
+/* ---------- import logs (photo -> Gemini -> CSV -> database) ---------- */
+
+export async function createImportLog(userId, kind, sourceNote, csvPreview, rowCount) {
+  const { data, error } = await supabase.from("import_logs")
+    .insert({ user_id: userId, kind, source_note: sourceNote || null, csv_preview: csvPreview || null, row_count: rowCount || null, status: "pending" })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateImportLogStatus(id, status) {
+  const { error } = await supabase.from("import_logs").update({ status }).eq("id", id);
+  if (error) throw error;
+}
+export async function fetchImportLogs(userId) {
+  const { data, error } = await supabase.from("import_logs").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20);
+  if (error) throw error;
+  return data || [];
 }
 
 /* ---------- teaching: planner ---------- */

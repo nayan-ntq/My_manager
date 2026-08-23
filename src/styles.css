@@ -10,9 +10,8 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 
 .top-bar { display:flex; align-items:center; justify-content:space-between; padding: 18px 16px 10px; }
 .top-left { display:flex; align-items:center; gap: 10px; }
-.logo-mark { width: 34px; height: 34px; border-radius: 10px; background: #33302B; display:flex; align-items:center; justify-content:center; position: relative; overflow:hidden; flex-shrink:0; }
-.logo-letter { font-family:'Baloo 2', sans-serif; font-weight:700; color:#fff; font-size: 17px; }
-.logo-bar { position:absolute; right:0; top:0; bottom:0; width: 8px; background:#F2790C; }
+.logo-mark { width: 34px; height: 34px; border-radius: 10px; display:flex; align-items:center; justify-content:center; position: relative; overflow:hidden; flex-shrink:0; }
+.logo-mark img { width: 100%; height: 100%; object-fit: contain; }
 .brand-title { font-family:'Baloo 2', sans-serif; font-size: 21px; font-weight: 700; margin:0; color:#2A2723; }
 .brand-sub { font-size: 11.5px; color:#9c9488; font-family:'JetBrains Mono', monospace; }
 .stats-pill { display:flex; gap:8px; }
@@ -299,3 +298,17 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .color-swatch.selected { border-color: #2A2723; }
 .icon-swatch { width: 34px; height: 34px; border-radius: 10px; background: #F1ECE3; border: 1.5px solid transparent; color: #7a7266; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .icon-swatch.selected { background: #fff; border-color: #F2790C; color: #F2790C; }
+
+/* photo import + CSV review */
+.photo-import-btn { background: #5B7FDB15; border-color: #5B7FDB40; color: #5B7FDB; }
+.spin-icon { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.csv-textarea { font-family: 'JetBrains Mono', monospace; font-size: 12px; min-height: 110px; }
+.csv-preview-table { margin-top: 10px; border: 1px solid #ECE6DE; border-radius: 10px; overflow: hidden; }
+.csv-preview-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; padding: 7px 10px; font-size: 12px; border-bottom: 1px solid #F1ECE3; }
+.csv-preview-row:last-child { border-bottom: none; }
+.csv-preview-header { background: #F1ECE3; font-weight: 700; color: #7a7266; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.02em; }
+.timetable-slot-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid #F1ECE3; }
+.timetable-slot-row:last-child { border-bottom: none; }
+.timetable-day-header { font-size: 12px; font-weight: 800; color: #F2790C; text-transform: uppercase; letter-spacing: 0.03em; margin: 14px 0 6px; }
+.timetable-day-header:first-child { margin-top: 0; }

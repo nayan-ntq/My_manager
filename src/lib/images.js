@@ -20,3 +20,8 @@ export function compressImage(file, maxDim = 720, quality = 0.72) {
     reader.readAsDataURL(file);
   });
 }
+
+/** Higher resolution/quality than compressImage \u2014 for OCR of handwritten pages, small text needs to stay legible. */
+export function compressForOCR(file) {
+  return compressImage(file, 1500, 0.88);
+}

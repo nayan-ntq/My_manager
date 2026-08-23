@@ -179,3 +179,37 @@ own build pass \u2014 flagging here so nothing gets lost:
 
 Database changes for this update are already applied to your live Supabase
 project and included in `supabase/schema.sql`.
+
+## Recent update: real branding + photo-import features
+
+### Branding
+Your actual gyanayan icon mark now replaces the placeholder "M" badge
+everywhere: app icon, favicon (browser tab), Apple touch icon (iOS home
+screen), PWA install icon (all sizes, including a properly padded maskable
+version for Android), and the in-app header/login screen. "My Manager"
+remains the app's display name throughout.
+
+### Photo-import features (Gemini vision)
+These all use the same `GEMINI_API_KEY` already documented above \u2014 no
+extra setup needed if that's already set:
+- **Weekly Timetable** (new tab in Teach) \u2014 add slots manually or import a
+  photo of your physical timetable
+- **Planner** \u2014 "Import from photo" pre-fills chapter number/name,
+  objectives, methodology, assignment, concepts, and exercises from a photo
+  of a planner page, for you to review before saving
+- **Classes** \u2014 "Import roster from photo" turns a class list photo into
+  students, via an editable CSV preview
+- **Correction** and **Scores** \u2014 "Import from photo" / "Import marks from
+  photo" reads a completion register or marks sheet, matches names against
+  the real roster, and shows a CSV preview before writing anything
+- Every import is logged to `import_logs` for an audit trail
+
+No imports write to the database automatically \u2014 you always see and can
+edit the extracted data first.
+
+## Still in progress
+
+- Workout plan photo import + AI schedule optimization across personal
+  timetable and workouts
+- Meal-timing suggestions tied to gym schedule
+- Notification reminders for upcoming tasks
