@@ -4,8 +4,9 @@ import { Segmented } from "../components/Shared";
 import PhotoStrip from "../components/PhotoStrip";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
+import ConceptTable from "../components/ConceptTable";
 import { parseCSV, matchStudentName } from "../lib/visionImport";
-import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_MARKS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_MARKS, UNDERSTANDING_TITLES } from "../lib/constants";
+import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_TITLES } from "../lib/constants";
 import GridMark from "../components/GridMark";
 import ConfirmDelete from "../components/ConfirmDelete";
 import { toast } from "../components/Toast";
@@ -432,8 +433,10 @@ function CorrectionPanel({ userId, classes }) {
     const isHomework = /home/i.test(typeText);
     const isClasswork = /class/i.test(typeText);
     const source = isHomework ? match.assignment : isClasswork ? match.methodology : `${match.methodology || ""}\n${match.assignment || ""}`;
-    setSuggestions(splitToSuggestions(source));
-    if (!conceptsInput.trim() && (match.concepts || []).length) setConceptsInput(match.concepts.join(", "));
+    // exercises and free-text suggestions are tracked in the exact same concept format, so merge them
+    setSuggestions([...(match.exercise_list || []), ...splitToSuggestions(source)]);
+    const combined = [...(match.concepts || []), ...(match.exercise_list || [])];
+    if (!conceptsInput.trim() && combined.length) setConceptsInput(combined.join(", "));
   };
 
   const addSuggestion = (s) => {
@@ -481,10 +484,9 @@ function CorrectionPanel({ userId, classes }) {
     setMarksImport(null);
     toast(`Matched ${matched} of ${rows.length} students`);
   };
-  const cycleUnderstanding = async (record, concept, studentId) => {
-    const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
-    const next = UNDERSTANDING_TAGS[(UNDERSTANDING_TAGS.indexOf(cur) + 1) % UNDERSTANDING_TAGS.length];
-    const conceptMarks = await db.updateCorrectionConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
+  const cycleUnderstanding = async (record, concept, studentId, directTag) => {
+    const tag = directTag || UNDERSTANDING_TAGS[(UNDERSTANDING_TAGS.indexOf(record.concept_marks?.[studentId]?.[concept] || "blank") + 1) % UNDERSTANDING_TAGS.length];
+    const conceptMarks = await db.updateCorrectionConceptMark(record.id, record.concept_marks || {}, studentId, concept, tag);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const bulkMarkUnderstanding = async (record, concept, tag, studentIds) => {
@@ -602,34 +604,16 @@ function CorrectionPanel({ userId, classes }) {
                 <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>
                   {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Concept understanding
                 </button>
-                {isOpen && r.concepts.map((concept) => (
-                  <div className="concept-block" key={concept}>
-                    <div className="concept-block-head">
-                      <div className="concept-block-title">{concept}</div>
-                      <div className="bulk-mark-row">
-                        <span className="bulk-mark-label">Mark all:</span>
-                        {UNDERSTANDING_TAGS.filter((t) => t !== "blank").map((tag) => (
-                          <button key={tag} type="button" className="bulk-mark-btn" title={UNDERSTANDING_TITLES[tag]}
-                            onClick={() => bulkMarkUnderstanding(r, concept, tag, cls.students.map((s) => s.id))}>
-                            <GridMark mark={UNDERSTANDING_MARKS[tag]} size={12} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid-table">
-                      {cls.students.map((s) => {
-                        const tag = r.concept_marks?.[s.id]?.[concept] || "blank";
-                        return (
-                          <button key={s.id} className={`grid-cell utag-${tag}`} title={UNDERSTANDING_TITLES[tag]} onClick={() => cycleUnderstanding(r, concept, s.id)}>
-                            <span className="grid-cell-name">{s.name}</span>
-                            <span className="grid-cell-code"><GridMark mark={UNDERSTANDING_MARKS[tag]} /></span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                {isOpen && <div className="legend">tap "mark all" to fill the whole class, then tap individual cells for exceptions</div>}
+                {isOpen && (
+                  <ConceptTable
+                    students={cls.students}
+                    concepts={r.concepts}
+                    tagOptions={UNDERSTANDING_TAGS.map((t) => ({ value: t, label: UNDERSTANDING_TITLES[t] }))}
+                    getTag={(sid, c) => r.concept_marks?.[sid]?.[c] || "blank"}
+                    onSetTag={(sid, c, tag) => cycleUnderstanding(r, c, sid, tag)}
+                    onBulkSet={(c, tag) => bulkMarkUnderstanding(r, c, tag, cls.students.map((s) => s.id))}
+                  />
+                )}
               </>
             )}
           </div>
@@ -730,10 +714,9 @@ function PerformancePanel({ userId, classes }) {
     const { absent, marks } = await db.setPerformanceAbsent(record.id, record.absent || {}, record.marks, studentId, isAbsent);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, absent, marks } : r));
   };
-  const cycleConceptTag = async (record, concept, studentId) => {
-    const cur = record.concept_marks?.[studentId]?.[concept] || "blank";
-    const next = CONCEPT_TAGS[(CONCEPT_TAGS.indexOf(cur) + 1) % CONCEPT_TAGS.length];
-    const conceptMarks = await db.updateConceptMark(record.id, record.concept_marks || {}, studentId, concept, next);
+  const cycleConceptTag = async (record, concept, studentId, directTag) => {
+    const tag = directTag || CONCEPT_TAGS[(CONCEPT_TAGS.indexOf(record.concept_marks?.[studentId]?.[concept] || "blank") + 1) % CONCEPT_TAGS.length];
+    const conceptMarks = await db.updateConceptMark(record.id, record.concept_marks || {}, studentId, concept, tag);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const bulkMarkConceptTag = async (record, concept, tag, studentIds) => {
@@ -868,34 +851,16 @@ function PerformancePanel({ userId, classes }) {
                 <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>
                   {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Concept breakdown
                 </button>
-                {isOpen && r.concepts.map((concept) => (
-                  <div className="concept-block" key={concept}>
-                    <div className="concept-block-head">
-                      <div className="concept-block-title">{concept}</div>
-                      <div className="bulk-mark-row">
-                        <span className="bulk-mark-label">Mark all:</span>
-                        {CONCEPT_TAGS.filter((t) => t !== "blank").map((tag) => (
-                          <button key={tag} type="button" className="bulk-mark-btn" title={CONCEPT_TAG_TITLES[tag]}
-                            onClick={() => bulkMarkConceptTag(r, concept, tag, cls.students.map((s) => s.id))}>
-                            <GridMark mark={CONCEPT_MARKS[tag]} size={12} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid-table">
-                      {cls.students.map((s) => {
-                        const tag = r.concept_marks?.[s.id]?.[concept] || "blank";
-                        return (
-                          <button key={s.id} className={`grid-cell tag-${tag}`} title={CONCEPT_TAG_TITLES[tag]} onClick={() => cycleConceptTag(r, concept, s.id)}>
-                            <span className="grid-cell-name">{s.name}</span>
-                            <span className="grid-cell-code"><GridMark mark={CONCEPT_MARKS[tag]} /></span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                {isOpen && <div className="legend">tap "mark all" to fill the whole class, then tap individual cells for exceptions</div>}
+                {isOpen && (
+                  <ConceptTable
+                    students={cls.students}
+                    concepts={r.concepts}
+                    tagOptions={CONCEPT_TAGS.map((t) => ({ value: t, label: CONCEPT_TAG_TITLES[t] }))}
+                    getTag={(sid, c) => r.concept_marks?.[sid]?.[c] || "blank"}
+                    onSetTag={(sid, c, tag) => cycleConceptTag(r, c, sid, tag)}
+                    onBulkSet={(c, tag) => bulkMarkConceptTag(r, c, tag, cls.students.map((s) => s.id))}
+                  />
+                )}
               </>
             )}
           </div>

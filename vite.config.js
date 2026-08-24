@@ -13,7 +13,7 @@ export default defineConfig({
         short_name: "My Manager",
         description: "Personal tasks, health, and growth alongside classes, planners, attendance, and gradebooks — all adaptive.",
         theme_color: "#33302B",
-        background_color: "#33302B",
+        background_color: "#FAF8F5",
         display: "standalone",
         orientation: "portrait",
         start_url: "/",

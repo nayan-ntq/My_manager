@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Flame, Sparkles } from "lucide-react";
+import { Flame, Sparkles, LogOut } from "lucide-react";
 import BottomNav from "./components/BottomNav";
 import Today from "./pages/Today";
 import Teach from "./pages/Teach";
@@ -68,15 +68,15 @@ export default function App() {
       <div className="top-bar">
         <div className="top-left">
           <div className="logo-mark"><img src="/icon-192.png" alt="" /></div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h1 className="brand-title">My Manager</h1>
-            <div className="brand-sub">{now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>
+            <div className="brand-sub">{now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</div>
           </div>
         </div>
         <div className="stats-pill">
           <div className="pill"><Flame size={13} color="#F2790C" /> {stats.streak}</div>
           <div className="pill"><Sparkles size={13} color="#F2790C" /> {stats.points}</div>
-          <button className="pill" onClick={db.signOut}>Sign out</button>
+          <button className="pill pill-icon-only" onClick={db.signOut} title="Sign out"><LogOut size={13} /></button>
         </div>
       </div>
 

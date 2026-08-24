@@ -300,12 +300,17 @@ export async function fetchPlannerChapterMap(userId, classId) {
   for (const row of data || []) if (row.chapter) map[row.date] = row.chapter;
   return map;
 }
-/** Distinct chapters logged for a class - used to auto-fill test concepts when none are given. */
+/** Every concept AND exercise logged across a class's planner \u2014 merged into one list since both
+ *  are tracked identically (same understanding/accuracy tags). Used to auto-fill test/correction
+ *  concept lists when none are given explicitly. */
 export async function fetchPlannerChapters(userId, classId) {
-  const { data, error } = await supabase.from("planner_entries").select("chapter").eq("user_id", userId).eq("class_id", classId);
+  const { data, error } = await supabase.from("planner_entries").select("concepts, exercise_list").eq("user_id", userId).eq("class_id", classId);
   if (error) throw error;
   const seen = new Set();
-  for (const row of data || []) if (row.chapter?.trim()) seen.add(row.chapter.trim());
+  for (const row of data || []) {
+    for (const c of row.concepts || []) if (c?.trim()) seen.add(c.trim());
+    for (const e of row.exercise_list || []) if (e?.trim()) seen.add(e.trim());
+  }
   return [...seen];
 }
 /** Absences cross-referenced with the concept/chapter taught that day. */
