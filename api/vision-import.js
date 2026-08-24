@@ -1,24 +1,31 @@
 // Vercel serverless function (Node.js runtime).
-// Uses Gemini's vision capability to turn a photo of a physical record (lesson
-// planner page, class roster, correction register, marks sheet, workout plan,
-// or timetable) into structured data the app can import. JSON-shaped kinds
-// (planner, workout) come back as JSON for direct form pre-fill; list-shaped
-// kinds (roster, correction, performance, timetable) come back as CSV text so
-// the teacher can review/edit before anything is written to the database.
+// Uses Gemini's vision capability to turn a photo (or several photos, e.g. a
+// multi-page weekly planner) of a physical record into structured data the
+// app can import. JSON-shaped kinds (planner, workout) come back as JSON for
+// direct pre-fill/review; list-shaped kinds (roster, correction, performance,
+// timetable) come back as CSV text so the teacher can review/edit before
+// anything is written to the database.
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 const PROMPTS = {
-  planner: (ctx) => `Read this photo of a lesson planner page. Extract the lesson plan as JSON with this
-exact shape: {"chapter_number": string|null, "chapter": string|null, "objectives": string|null,
-"methodology": string|null, "resources": string|null, "assignment": string|null, "reflection": string|null,
-"concepts": string[], "exercise_list": string[]}. Concepts and exercise_list should be short items split
-out from the methodology/assignment text (e.g. individual topic names, "Ex 3.1"). Use null for any field
-you can't read confidently \u2014 never invent content. Return ONLY the JSON object, no other text.
+  planner: (ctx) => `Read these photo(s) of one or more lesson planner pages - they may cover a single
+day or a whole week/multiple dates (e.g. a weekly planner table with a row or column per day). Extract
+EVERY distinct lesson/date you can find as JSON with this exact shape:
+{"entries": [{"date": "YYYY-MM-DD"|null, "chapter_number": string|null, "chapter": string|null,
+"objectives": string|null, "methodology": string|null, "resources": string|null, "assignment": string|null,
+"reflection": string|null, "concepts": string[], "exercise_list": string[]}]}.
+concepts and exercise_list should be short items split out from the methodology/assignment text (e.g.
+individual topic names, "Ex 3.1"). For "date": if the page shows an actual date, use it. If it only shows
+a day name (Monday, Tuesday...), compute the real date using today = ${ctx?.today || "unknown"} (a
+${ctx?.todayDow || ""}) and resolve it to the nearest upcoming or matching occurrence of that weekday. If
+no date or day is determinable at all, use null. Use null for any other field you can't read confidently
+- never invent content. If the photo(s) show only a single lesson, return an "entries" array with just
+one item. Return ONLY the JSON object, no other text.
 ${ctx?.classHint ? `Context: this is for class "${ctx.classHint}".` : ""}`,
 
   roster: () => `Read this photo of a student roster/list. Extract every student as CSV with header
-"name,roll_no" \u2014 one row per student, roll_no blank if not shown. Preserve names exactly as written
+"name,roll_no" - one row per student, roll_no blank if not shown. Preserve names exactly as written
 (fix obvious OCR errors only, don't guess new names). Return ONLY the CSV text, no other commentary, no
 markdown code fences.`,
 
@@ -29,7 +36,7 @@ known class roster if possible: ${JSON.stringify(ctx?.students || [])}. Return O
 commentary, no markdown code fences.`,
 
   performance: (ctx) => `Read this photo of a test marks/performance sheet. Extract as CSV with header
-"student_name,marks" (marks as a plain number, blank if absent or illegible \u2014 never guess a number).
+"student_name,marks" (marks as a plain number, blank if absent or illegible - never guess a number).
 Match each row to the closest name in this known class roster if possible: ${JSON.stringify(ctx?.students || [])}.
 Return ONLY the CSV text, no commentary, no markdown code fences.`,
 
@@ -43,6 +50,7 @@ numbers aren't visible, use null rather than guessing. Return ONLY the JSON obje
 };
 
 const JSON_KINDS = new Set(["planner", "workout"]);
+const MAX_IMAGES = 8;
 
 function stripCodeFence(text) {
   return text.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
@@ -60,26 +68,26 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { image, mimeType, kind, context } = req.body || {};
-  if (!image || !PROMPTS[kind]) {
-    res.status(400).json({ error: `image and a valid kind (${Object.keys(PROMPTS).join(", ")}) are required` });
+  const { image, images, mimeType, kind, context } = req.body || {};
+  const imageList = (images && images.length ? images : image ? [image] : []).slice(0, MAX_IMAGES);
+  if (!imageList.length || !PROMPTS[kind]) {
+    res.status(400).json({ error: `images (1-${MAX_IMAGES}) and a valid kind (${Object.keys(PROMPTS).join(", ")}) are required` });
     return;
   }
 
-  const base64 = image.includes(",") ? image.split(",")[1] : image;
-  const prompt = PROMPTS[kind](context);
+  const enrichedContext = kind === "planner"
+    ? { ...context, today: new Date().toISOString().slice(0, 10), todayDow: new Date().toLocaleDateString([], { weekday: "long" }) }
+    : context;
+  const prompt = PROMPTS[kind](enrichedContext);
   const isJson = JSON_KINDS.has(kind);
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+    const imageParts = imageList.map((img) => ({
+      inline_data: { mime_type: mimeType || "image/jpeg", data: img.includes(",") ? img.split(",")[1] : img },
+    }));
     const body = {
-      contents: [{
-        role: "user",
-        parts: [
-          { inline_data: { mime_type: mimeType || "image/jpeg", data: base64 } },
-          { text: prompt },
-        ],
-      }],
+      contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }],
     };
     if (isJson) body.generationConfig = { responseMimeType: "application/json" };
 
@@ -92,12 +100,12 @@ export default async function handler(req, res) {
     if (!upstream.ok) throw new Error(data?.error?.message || `Gemini API error (${upstream.status})`);
 
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("\n").trim();
-    if (!text) throw new Error("Gemini returned an empty response (it may have blocked the image)");
+    if (!text) throw new Error("Gemini returned an empty response (it may have blocked an image)");
 
     if (isJson) {
       let parsed;
       try { parsed = JSON.parse(stripCodeFence(text)); }
-      catch (e) { throw new Error("Gemini's response wasn't valid JSON \u2014 try a clearer photo"); }
+      catch (e) { throw new Error("Gemini's response wasn't valid JSON - try a clearer photo"); }
       res.status(200).json({ data: parsed });
     } else {
       res.status(200).json({ csv: stripCodeFence(text) });

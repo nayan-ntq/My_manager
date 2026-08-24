@@ -5,6 +5,7 @@ import PhotoStrip from "../components/PhotoStrip";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
 import ConceptTable from "../components/ConceptTable";
+import PlannerImportReviewSheet from "../components/PlannerImportReviewSheet";
 import { parseCSV, matchStudentName } from "../lib/visionImport";
 import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_TITLES } from "../lib/constants";
 import GridMark from "../components/GridMark";
@@ -163,6 +164,7 @@ function PlannerPanel({ userId, classes }) {
   const [entries, setEntries] = useState([]);
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [autoFilled, setAutoFilled] = useState(false);
+  const [importReview, setImportReview] = useState(null); // array of extracted entries, pre-confirm
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -186,19 +188,27 @@ function PlannerPanel({ userId, classes }) {
   };
 
   const applyPhotoImport = ({ data }) => {
-    setForm((f) => ({
-      ...f,
-      chapter_number: data.chapter_number || f.chapter_number,
-      chapter: data.chapter || f.chapter,
-      objectives: data.objectives || f.objectives,
-      methodology: data.methodology || f.methodology,
-      resources: data.resources || f.resources,
-      assignment: data.assignment || f.assignment,
-      reflection: data.reflection || f.reflection,
-      conceptsInput: (data.concepts || []).length ? data.concepts.join(", ") : f.conceptsInput,
-      exercisesInput: (data.exercise_list || []).length ? data.exercise_list.join(", ") : f.exercisesInput,
-    }));
-    toast("Filled in from photo \u2014 review before saving");
+    setImportReview(data.entries && data.entries.length ? data.entries : [data]);
+  };
+
+  const confirmPlannerImport = async (rows) => {
+    const cls = classes.find((c) => c.id === classId);
+    let created = 0;
+    for (const row of rows) {
+      if (!row.chapter?.trim() && !row.chapter_number?.trim()) continue;
+      await db.createPlannerEntry(userId, classId, row.date, {
+        chapter_number: row.chapter_number, chapter: row.chapter || "Untitled lesson",
+        objectives: row.objectives, methodology: row.methodology, resources: row.resources,
+        assignment: row.assignment, reflection: row.reflection, concepts: row.concepts,
+        exercise_list: row.exercise_list, photos: [],
+      });
+      await db.createTeachingTask(userId, row.date, classId, cls?.name || "Class", row.chapter);
+      created++;
+    }
+    await db.createImportLog(userId, "planner", cls?.name, JSON.stringify(rows.map((r) => r.date)), rows.length);
+    setImportReview(null);
+    load();
+    toast(`Imported ${created} lesson${created === 1 ? "" : "s"} \u2014 added to Today too`);
   };
 
   const save = async () => {
@@ -275,12 +285,18 @@ function PlannerPanel({ userId, classes }) {
           {e.photos?.length > 0 && <div className="photo-strip" style={{ marginTop: 8 }}>{e.photos.map((p, i) => <div className="photo-thumb photo-thumb-view" key={i}><img src={p} alt="" /></div>)}</div>}
         </div>
       ))}
+      {importReview && (
+        <PlannerImportReviewSheet
+          entries={importReview}
+          onClose={() => setImportReview(null)}
+          onConfirm={confirmPlannerImport}
+        />
+      )}
     </div>
   );
 }
 
 /* ---------- attendance ---------- */
-
 
 function AttendancePanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");

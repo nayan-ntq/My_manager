@@ -213,3 +213,19 @@ edit the extracted data first.
   timetable and workouts
 - Meal-timing suggestions tied to gym schedule
 - Notification reminders for upcoming tasks
+
+## Recent update: multi-image import, multi-date planner sync to Today
+
+- **Multi-image import** \u2014 every "Import from photo" button now lets you
+  select multiple photos at once (up to 8). Useful for a multi-page planner,
+  or a correction/marks sheet that spans more than one page \u2014 Gemini reads
+  them together as one request.
+- **Multi-date planner import** \u2014 if your photo(s) show a whole week (or
+  any set of multiple dates/lessons), Gemini now extracts every lesson it
+  finds, each with its own date, and shows them all in a review list before
+  anything saves. Relative day names ("Monday", "Tuesday"...) are resolved
+  against today's actual date.
+- **Planner imports now sync to Today** \u2014 each imported (or now, any
+  future enhancement to manually-created) lesson automatically creates a
+  matching "Teach {class}: {chapter}" task on the personal Today page for
+  that date, timed to your Timetable slot for that class if one exists.

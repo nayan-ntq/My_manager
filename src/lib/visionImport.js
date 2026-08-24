@@ -1,16 +1,18 @@
 import { compressForOCR } from "./images";
 
 /**
- * Compresses a photo and sends it to /api/vision-import for Gemini to extract
- * structured data. Returns { data } for JSON kinds (planner, workout) or
- * { csv } for list kinds (roster, correction, performance, timetable).
+ * Compresses one or more photos and sends them to /api/vision-import for
+ * Gemini to extract structured data. Returns { data } for JSON kinds
+ * (planner, workout) or { csv } for list kinds (roster, correction,
+ * performance, timetable).
  */
-export async function visionImport(file, kind, context) {
-  const dataUrl = await compressForOCR(file);
+export async function visionImport(files, kind, context) {
+  const fileArray = Array.isArray(files) ? files : [files];
+  const images = await Promise.all(fileArray.map((f) => compressForOCR(f)));
   const res = await fetch("/api/vision-import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: dataUrl, mimeType: "image/jpeg", kind, context }),
+    body: JSON.stringify({ images, mimeType: "image/jpeg", kind, context }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Import failed (${res.status})`);

@@ -356,3 +356,7 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .concept-student-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 2px; border-bottom: 1px solid #F1ECE3; }
 .concept-student-row:last-child { border-bottom: none; }
 .concept-student-row-name { font-size: 13.5px; font-weight: 600; color: #33302B; }
+
+/* planner multi-date import review */
+.import-review-card { background: #FAF8F5; border: 1px solid #ECE6DE; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.import-review-date { width: auto; padding: 5px 8px; font-size: 12.5px; }

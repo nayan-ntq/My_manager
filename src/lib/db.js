@@ -214,6 +214,25 @@ export async function fetchTimetableForDay(userId, dayOfWeek) {
   if (error) throw error;
   return data || [];
 }
+/**
+ * Creates a personal "teach this lesson" task on the given date, timed to the
+ * timetable slot for that class if one exists for that weekday (else a
+ * default mid-morning slot). This is what makes an imported Planner entry
+ * show up on the date-wise Today page.
+ */
+export async function createTeachingTask(userId, date, classId, className, chapterLabel) {
+  const dow = new Date(date + "T00:00:00").getDay();
+  const daySlots = await fetchTimetableForDay(userId, dow);
+  const slot = daySlots.find((s) => s.class_id === classId);
+  const time = slot ? slot.start_time.slice(0, 5) : "09:00";
+  const duration = slot?.end_time
+    ? Math.max(15, Math.round((new Date(`2000-01-01T${slot.end_time}`) - new Date(`2000-01-01T${slot.start_time}`)) / 60000))
+    : 45;
+  return createTask(userId, date, {
+    title: `Teach ${className}: ${chapterLabel || "lesson"}`,
+    category: "professional", time, duration, anchored: !!slot, important: true,
+  });
+}
 
 /* ---------- import logs (photo -> Gemini -> CSV -> database) ---------- */
 
@@ -300,7 +319,7 @@ export async function fetchPlannerChapterMap(userId, classId) {
   for (const row of data || []) if (row.chapter) map[row.date] = row.chapter;
   return map;
 }
-/** Every concept AND exercise logged across a class's planner \u2014 merged into one list since both
+/** Every concept AND exercise logged across a class's planner - merged into one list since both
  *  are tracked identically (same understanding/accuracy tags). Used to auto-fill test/correction
  *  concept lists when none are given explicitly. */
 export async function fetchPlannerChapters(userId, classId) {
