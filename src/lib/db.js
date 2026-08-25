@@ -170,6 +170,10 @@ export async function createClass(userId, name, subject) {
   if (error) throw error;
   return { ...data, students: [] };
 }
+export async function updateClass(id, patch) {
+  const { error } = await supabase.from("classes").update(patch).eq("id", id);
+  if (error) throw error;
+}
 export async function deleteClass(id) {
   const { error } = await supabase.from("classes").delete().eq("id", id);
   if (error) throw error;
@@ -205,6 +209,10 @@ export async function createTimetableSlot(userId, classId, dayOfWeek, startTime,
 }
 export async function deleteTimetableSlot(id) {
   const { error } = await supabase.from("timetable_slots").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function updateTimetableSlot(id, patch) {
+  const { error } = await supabase.from("timetable_slots").update(patch).eq("id", id);
   if (error) throw error;
 }
 /** Which class(es) are scheduled on a given day-of-week (0=Sunday), sorted by time \u2014 powers "today's class" auto-matching. */
@@ -267,6 +275,10 @@ export async function createPlannerEntry(userId, classId, date, form) {
 }
 export async function deletePlannerEntry(id) {
   const { error } = await supabase.from("planner_entries").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function updatePlannerEntry(id, patch) {
+  const { error } = await supabase.from("planner_entries").update(patch).eq("id", id);
   if (error) throw error;
 }
 /** Looks up the most recent chapter name used for a given chapter number in this class - powers auto-fill. */
@@ -388,6 +400,10 @@ export async function deleteCorrectionRecord(id) {
   const { error } = await supabase.from("correction_records").delete().eq("id", id);
   if (error) throw error;
 }
+export async function updateCorrectionRecord(id, patch) {
+  const { error } = await supabase.from("correction_records").update(patch).eq("id", id);
+  if (error) throw error;
+}
 /** Every distinct correction type this user has ever used - the dropdown grows itself. */
 export async function fetchCorrectionTypes(userId) {
   const { data, error } = await supabase.from("correction_records").select("type").eq("user_id", userId);
@@ -469,6 +485,10 @@ export async function bulkSetConceptMark(id, currentConceptMarks, studentIds, co
 }
 export async function deletePerformanceRecord(id) {
   const { error } = await supabase.from("performance_records").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function updatePerformanceRecord(id, patch) {
+  const { error } = await supabase.from("performance_records").update(patch).eq("id", id);
   if (error) throw error;
 }
 

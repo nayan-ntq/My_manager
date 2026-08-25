@@ -229,3 +229,18 @@ edit the extracted data first.
   future enhancement to manually-created) lesson automatically creates a
   matching "Teach {class}: {chapter}" task on the personal Today page for
   that date, timed to your Timetable slot for that class if one exists.
+
+## Recent update: edit everything
+
+Every saved record can now be edited after the fact, not just deleted:
+- **Classes** \u2014 tap the class name/subject to rename or change subject
+- **Timetable slots** \u2014 tap a slot to change its day, class, time, or label
+- **Correction records** \u2014 tap the record title to edit title, type, date,
+  chapter number, or the concepts/questions it covers
+- **Test records** \u2014 tap the record title to edit title, test type, max
+  marks, passing marks, chapter count, exercises, or concepts covered
+- **Planner entries** \u2014 tap an entry to edit every field, including photos
+
+(Students, tasks, and categories already had edit options from earlier
+updates.) No database changes in this update \u2014 pure front-end plus five
+small new update functions in the data layer.

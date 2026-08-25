@@ -17,6 +17,31 @@ function todayKey() { return new Date().toISOString().slice(0, 10); }
 
 /* ---------- classes ---------- */
 
+function ClassEditSheet({ cls, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(cls.name);
+  const [subject, setSubject] = useState(cls.subject || "");
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit class</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="field-label">Class name</div>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <div className="field-label">Subject</div>
+        <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        <div className="sheet-actions">
+          <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => name.trim() && onSave({ name: name.trim(), subject: subject.trim() || null })}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StudentEditSheet({ student, onClose, onSave, onDelete }) {
   const [name, setName] = useState(student.name);
   const [rollNo, setRollNo] = useState(student.roll_no || "");
@@ -57,6 +82,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
   const [name, setName] = useState(""); const [subject, setSubject] = useState("");
   const [studentInput, setStudentInput] = useState({});
   const [editingStudent, setEditingStudent] = useState(null);
+  const [editingClass, setEditingClass] = useState(null);
   const [rosterImport, setRosterImport] = useState(null); // { classId, csv }
 
   const addClass = async () => {
@@ -81,6 +107,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
     toast("Student updated");
   };
   const removeClass = async (id) => { await db.deleteClass(id); reloadClasses(); toast("Class deleted"); };
+  const saveClass = async (id, patch) => { await db.updateClass(id, patch); setEditingClass(null); reloadClasses(); toast("Class updated"); };
 
   const importRoster = async (classId, rows) => {
     const cls = classes.find((c) => c.id === classId);
@@ -109,7 +136,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
       {classes.map((c) => (
         <div className="card" key={c.id}>
           <div className="card-title-row">
-            <div><div className="card-title" style={{ marginBottom: 0 }}>{c.name}</div><div className="card-sub">{c.subject}  |  {c.students.length} students</div></div>
+            <div style={{ cursor: "pointer" }} onClick={() => setEditingClass(c)}><div className="card-title" style={{ marginBottom: 0 }}>{c.name}</div><div className="card-sub">{c.subject}  |  {c.students.length} students</div></div>
             <ConfirmDelete onConfirm={() => removeClass(c.id)} size={14} />
           </div>
           <div className="student-chip-wrap">
@@ -136,6 +163,14 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
           onDelete={() => removeStudent(editingStudent.id)}
         />
       )}
+      {editingClass && (
+        <ClassEditSheet
+          cls={editingClass}
+          onClose={() => setEditingClass(null)}
+          onSave={(patch) => saveClass(editingClass.id, patch)}
+          onDelete={() => removeClass(editingClass.id)}
+        />
+      )}
       {rosterImport && (
         <CsvReviewSheet
           title="Import roster"
@@ -156,6 +191,63 @@ function ClassPicker({ classes, value, onChange }) {
 
 /* ---------- planner ---------- */
 
+function PlannerEntryEditSheet({ entry, onClose, onSave }) {
+  const [form, setForm] = useState({
+    chapter_number: entry.chapter_number || "", chapter: entry.chapter || "",
+    objectives: entry.objectives || "", methodology: entry.methodology || "", resources: entry.resources || "",
+    assignment: entry.assignment || "", reflection: entry.reflection || "",
+    conceptsInput: (entry.concepts || []).join(", "), exercisesInput: (entry.exercise_list || []).join(", "),
+    photos: entry.photos || [],
+  });
+
+  const save = () => {
+    if (!form.chapter.trim()) return;
+    onSave({
+      chapter_number: form.chapter_number.trim() || null, chapter: form.chapter,
+      objectives: form.objectives, methodology: form.methodology, resources: form.resources,
+      assignment: form.assignment, reflection: form.reflection,
+      concepts: form.conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
+      exercise_list: form.exercisesInput.split(",").map((s) => s.trim()).filter(Boolean),
+      photos: form.photos,
+    });
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit planner entry</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="row-2">
+          <div><div className="field-label">Chapter number</div><input className="input" value={form.chapter_number} onChange={(e) => setForm({ ...form, chapter_number: e.target.value })} /></div>
+          <div><div className="field-label">Chapter name</div><input className="input" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} /></div>
+        </div>
+        <div className="field-label">Learning objectives</div>
+        <textarea className="input textarea" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
+        <div className="field-label">Methodology / activity</div>
+        <textarea className="input textarea" value={form.methodology} onChange={(e) => setForm({ ...form, methodology: e.target.value })} />
+        <div className="field-label">Resources</div>
+        <input className="input" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} />
+        <div className="field-label">Assignment</div>
+        <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
+        <div className="field-label">Reflection</div>
+        <textarea className="input textarea" value={form.reflection} onChange={(e) => setForm({ ...form, reflection: e.target.value })} />
+        <div className="field-label">Concepts covered</div>
+        <input className="input" value={form.conceptsInput} onChange={(e) => setForm({ ...form, conceptsInput: e.target.value })} />
+        <div className="field-label">Exercises covered</div>
+        <input className="input" value={form.exercisesInput} onChange={(e) => setForm({ ...form, exercisesInput: e.target.value })} />
+        <div className="field-label">Photos</div>
+        <PhotoStrip photos={form.photos} onAdd={(url) => setForm({ ...form, photos: [...form.photos, url] })} onRemove={(pi) => setForm({ ...form, photos: form.photos.filter((_, idx) => idx !== pi) })} max={6} />
+        <div className="sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={save}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlannerPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
@@ -165,6 +257,7 @@ function PlannerPanel({ userId, classes }) {
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [autoFilled, setAutoFilled] = useState(false);
   const [importReview, setImportReview] = useState(null); // array of extracted entries, pre-confirm
+  const [editingEntry, setEditingEntry] = useState(null);
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -228,6 +321,7 @@ function PlannerPanel({ userId, classes }) {
     toast("Planner entry saved");
   };
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
+  const saveEntry = async (id, patch) => { await db.updatePlannerEntry(id, patch); setEditingEntry(null); load(); toast("Planner entry updated"); };
 
   return (
     <div>
@@ -275,13 +369,15 @@ function PlannerPanel({ userId, classes }) {
       {entries.map((e) => (
         <div className="card planner-entry" key={e.id}>
           <div className="card-title-row"><div className="card-sub mono">{e.date}</div><ConfirmDelete onConfirm={() => remove(e.id)} size={13} /></div>
-          <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
-          {e.objectives && <div className="planner-field"><span className="planner-label">Objectives:</span> {e.objectives}</div>}
-          {e.methodology && <div className="planner-field"><span className="planner-label">Methodology:</span> {e.methodology}</div>}
-          {e.assignment && <div className="planner-field"><span className="planner-label">Assignment:</span> {e.assignment}</div>}
-          {e.reflection && <div className="planner-field"><span className="planner-label">Reflection:</span> {e.reflection}</div>}
-          {e.concepts?.length > 0 && <div className="planner-field"><span className="planner-label">Concepts:</span> {e.concepts.join(", ")}</div>}
-          {e.exercise_list?.length > 0 && <div className="planner-field"><span className="planner-label">Exercises:</span> {e.exercise_list.join(", ")}</div>}
+          <div onClick={() => setEditingEntry(e)} style={{ cursor: "pointer" }}>
+            <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
+            {e.objectives && <div className="planner-field"><span className="planner-label">Objectives:</span> {e.objectives}</div>}
+            {e.methodology && <div className="planner-field"><span className="planner-label">Methodology:</span> {e.methodology}</div>}
+            {e.assignment && <div className="planner-field"><span className="planner-label">Assignment:</span> {e.assignment}</div>}
+            {e.reflection && <div className="planner-field"><span className="planner-label">Reflection:</span> {e.reflection}</div>}
+            {e.concepts?.length > 0 && <div className="planner-field"><span className="planner-label">Concepts:</span> {e.concepts.join(", ")}</div>}
+            {e.exercise_list?.length > 0 && <div className="planner-field"><span className="planner-label">Exercises:</span> {e.exercise_list.join(", ")}</div>}
+          </div>
           {e.photos?.length > 0 && <div className="photo-strip" style={{ marginTop: 8 }}>{e.photos.map((p, i) => <div className="photo-thumb photo-thumb-view" key={i}><img src={p} alt="" /></div>)}</div>}
         </div>
       ))}
@@ -290,6 +386,13 @@ function PlannerPanel({ userId, classes }) {
           entries={importReview}
           onClose={() => setImportReview(null)}
           onConfirm={confirmPlannerImport}
+        />
+      )}
+      {editingEntry && (
+        <PlannerEntryEditSheet
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSave={(patch) => saveEntry(editingEntry.id, patch)}
         />
       )}
     </div>
@@ -406,6 +509,44 @@ function splitToSuggestions(text) {
   return [...new Set(text.split(/[\n,;]+/).map((s) => s.trim()).filter((s) => s.length > 1))];
 }
 
+function CorrectionRecordEditSheet({ record, correctionTypes, chapterNumbers, onClose, onSave }) {
+  const [title, setTitle] = useState(record.title);
+  const [type, setType] = useState(record.type);
+  const [date, setDate] = useState(record.date);
+  const [chapterNumber, setChapterNumber] = useState(record.chapter_number || "");
+  const [conceptsInput, setConceptsInput] = useState((record.concepts || []).join(", "));
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit record</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="field-label">Title</div>
+        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <div className="field-label">Type</div>
+        <input className="input" list="correction-types-edit" value={type} onChange={(e) => setType(e.target.value)} />
+        <datalist id="correction-types-edit">{correctionTypes.map((t) => <option key={t} value={t} />)}</datalist>
+        <div className="field-label">Date</div>
+        <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div className="field-label">Chapter number</div>
+        <input className="input" list="chapter-numbers-edit" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} />
+        <datalist id="chapter-numbers-edit">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
+        <div className="field-label">Concepts / questions covered</div>
+        <input className="input" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
+        <div className="sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => title.trim() && type.trim() && onSave({
+            title: title.trim(), type: type.trim(), date, chapter_number: chapterNumber.trim() || null,
+            concepts: conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
+          })}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CorrectionPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
@@ -422,6 +563,7 @@ function CorrectionPanel({ userId, classes }) {
   const [expanded, setExpanded] = useState({});
   const [showMore, setShowMore] = useState(false);
   const [marksImport, setMarksImport] = useState(null); // { record, csv }
+  const [editingRecord, setEditingRecord] = useState(null);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -519,6 +661,7 @@ function CorrectionPanel({ userId, classes }) {
     toast(`Marked ${task.studentName} done`);
   };
   const removeRecord = async (id) => { await db.deleteCorrectionRecord(id); load(); toast("Record deleted"); };
+  const saveRecordMeta = async (id, patch) => { await db.updateCorrectionRecord(id, patch); setEditingRecord(null); load(); toast("Record updated"); };
 
   return (
     <div>
@@ -587,7 +730,7 @@ function CorrectionPanel({ userId, classes }) {
         return (
           <div className="card" key={r.id}>
             <div className="card-title-row">
-              <div>
+              <div style={{ cursor: "pointer" }} onClick={() => setEditingRecord(r)}>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div>
                 <div className="card-sub mono">{r.date}{r.chapter_number ? `  |  Ch ${r.chapter_number}` : ""}</div>
                 {r.concepts?.length > 0 && <div className="card-sub">Covers: {r.concepts.join(", ")}</div>}
@@ -644,6 +787,15 @@ function CorrectionPanel({ userId, classes }) {
           onConfirm={(rows) => importCorrectionMarks(marksImport.record, rows)}
         />
       )}
+      {editingRecord && (
+        <CorrectionRecordEditSheet
+          record={editingRecord}
+          correctionTypes={correctionTypes}
+          chapterNumbers={chapterNumbers}
+          onClose={() => setEditingRecord(null)}
+          onSave={(patch) => saveRecordMeta(editingRecord.id, patch)}
+        />
+      )}
     </div>
   );
 }
@@ -684,6 +836,52 @@ function computeImprovingStudents(records, studentsById) {
   return results.sort((a, b) => b.delta - a.delta);
 }
 
+function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
+  const [title, setTitle] = useState(record.title);
+  const [testType, setTestType] = useState(record.test_type);
+  const [maxMarks, setMaxMarks] = useState(record.max_marks);
+  const [passingMarks, setPassingMarks] = useState(record.passing_marks ?? "");
+  const [chapterCount, setChapterCount] = useState(record.chapter_count ?? "");
+  const [exercises, setExercises] = useState(record.exercises || "");
+  const [conceptsInput, setConceptsInput] = useState((record.concepts || []).join(", "));
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit test record</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="field-label">Title</div>
+        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <div className="field-label">Test type</div>
+        <input className="input" list="test-types-edit" value={testType} onChange={(e) => setTestType(e.target.value)} />
+        <datalist id="test-types-edit">{testTypes.map((t) => <option key={t} value={t} />)}</datalist>
+        <div className="row-2">
+          <div><div className="field-label">Max marks</div><input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} /></div>
+          <div><div className="field-label">Passing marks</div><input type="number" className="input" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} /></div>
+        </div>
+        <div className="field-label">Number of chapters</div>
+        <input type="number" className="input" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
+        <div className="field-label">Exercises</div>
+        <input className="input" value={exercises} onChange={(e) => setExercises(e.target.value)} />
+        <div className="field-label">Concepts covered</div>
+        <input className="input" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
+        <div className="sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => title.trim() && onSave({
+            title: title.trim(), test_type: testType.trim(), max_marks: Number(maxMarks),
+            passing_marks: passingMarks === "" ? null : Number(passingMarks),
+            chapter_count: chapterCount === "" ? null : Number(chapterCount),
+            exercises: exercises.trim() || null,
+            concepts: conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
+          })}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PerformancePanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
@@ -699,6 +897,7 @@ function PerformancePanel({ userId, classes }) {
   const [showTrends, setShowTrends] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [marksImport, setMarksImport] = useState(null); // { record, csv }
+  const [editingRecord, setEditingRecord] = useState(null);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -741,6 +940,7 @@ function PerformancePanel({ userId, classes }) {
     toast(`Marked whole class: ${CONCEPT_TAG_TITLES[tag]}`);
   };
   const removeRecord = async (id) => { await db.deletePerformanceRecord(id); load(); toast("Test record deleted"); };
+  const saveRecordMeta = async (id, patch) => { await db.updatePerformanceRecord(id, patch); setEditingRecord(null); load(); toast("Test record updated"); };
   const importPerformanceMarks = async (record, rows) => {
     const marks = { ...record.marks };
     let matched = 0;
@@ -832,7 +1032,7 @@ function PerformancePanel({ userId, classes }) {
         return (
           <div className="card" key={r.id}>
             <div className="card-title-row">
-              <div>
+              <div style={{ cursor: "pointer" }} onClick={() => setEditingRecord(r)}>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div>
                 <div className="card-sub">Out of {r.max_marks}{r.passing_marks != null ? `  |  pass mark ${r.passing_marks}` : ""}{r.chapter_count ? `  |  ${r.chapter_count} chapters` : ""}</div>
                 {stats && (
@@ -891,6 +1091,14 @@ function PerformancePanel({ userId, classes }) {
           onConfirm={(rows) => importPerformanceMarks(marksImport.record, rows)}
         />
       )}
+      {editingRecord && (
+        <PerformanceRecordEditSheet
+          record={editingRecord}
+          testTypes={testTypes}
+          onClose={() => setEditingRecord(null)}
+          onSave={(patch) => saveRecordMeta(editingRecord.id, patch)}
+        />
+      )}
     </div>
   );
 }
@@ -901,6 +1109,42 @@ function PerformancePanel({ userId, classes }) {
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function SlotEditSheet({ slot, classes, onClose, onSave, onDelete }) {
+  const [dayOfWeek, setDayOfWeek] = useState(slot.day_of_week);
+  const [classId, setClassId] = useState(slot.class_id);
+  const [startTime, setStartTime] = useState(slot.start_time?.slice(0, 5) || "09:00");
+  const [endTime, setEndTime] = useState(slot.end_time?.slice(0, 5) || "");
+  const [label, setLabel] = useState(slot.label || "");
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit slot</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="field-label">Day</div>
+        <select className="input" value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))}>
+          {DAY_LABELS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+        </select>
+        <div className="field-label">Class</div>
+        <ClassPicker classes={classes} value={classId} onChange={setClassId} />
+        <div className="row-2">
+          <div><div className="field-label">Start time</div><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></div>
+          <div><div className="field-label">End time (optional)</div><input type="time" className="input" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></div>
+        </div>
+        <div className="field-label">Label (optional)</div>
+        <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <div className="sheet-actions">
+          <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => onSave({ day_of_week: dayOfWeek, class_id: classId, start_time: startTime, end_time: endTime || null, label: label.trim() || null })}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TimetablePanel({ userId, classes }) {
   const [slots, setSlots] = useState([]);
   const [dayOfWeek, setDayOfWeek] = useState(1);
@@ -910,6 +1154,7 @@ function TimetablePanel({ userId, classes }) {
   const [endTime, setEndTime] = useState("");
   const [label, setLabel] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editingSlot, setEditingSlot] = useState(null);
   const [ttImport, setTtImport] = useState(null); // csv string
 
   const load = useCallback(async () => { setSlots(await db.fetchTimetable(userId)); }, [userId]);
@@ -923,6 +1168,7 @@ function TimetablePanel({ userId, classes }) {
     toast("Timetable slot added");
   };
   const removeSlot = async (id) => { await db.deleteTimetableSlot(id); load(); toast("Slot removed"); };
+  const saveSlot = async (id, patch) => { await db.updateTimetableSlot(id, patch); setEditingSlot(null); load(); toast("Slot updated"); };
 
   const importTimetable = async (rows) => {
     let imported = 0;
@@ -982,7 +1228,7 @@ function TimetablePanel({ userId, classes }) {
             <div className="timetable-day-header">{day}</div>
             {byDay[i].map((s) => (
               <div className="timetable-slot-row" key={s.id}>
-                <div>
+                <div style={{ cursor: "pointer" }} onClick={() => setEditingSlot(s)}>
                   <span className="mono" style={{ fontSize: 12.5, fontWeight: 700 }}>{s.start_time?.slice(0, 5)}{s.end_time ? ` - ${s.end_time.slice(0, 5)}` : ""}</span>
                   {" "}{s.classes?.name || "Unknown class"}{s.label ? ` (${s.label})` : ""}
                 </div>
@@ -1000,6 +1246,15 @@ function TimetablePanel({ userId, classes }) {
           columns={["day_of_week", "start_time", "end_time", "class_name", "label"]}
           onClose={() => setTtImport(null)}
           onConfirm={importTimetable}
+        />
+      )}
+      {editingSlot && (
+        <SlotEditSheet
+          slot={editingSlot}
+          classes={classes}
+          onClose={() => setEditingSlot(null)}
+          onSave={(patch) => saveSlot(editingSlot.id, patch)}
+          onDelete={() => removeSlot(editingSlot.id)}
         />
       )}
     </div>
