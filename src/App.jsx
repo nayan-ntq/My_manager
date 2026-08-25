@@ -74,16 +74,18 @@ export default function App() {
           </div>
         </div>
         <div className="stats-pill">
-          <div className="pill"><Flame size={13} color="#F2790C" /> {stats.streak}</div>
+          <div className={`pill ${stats.streak > 0 ? "flame-active" : ""}`}><Flame size={13} color="#F2790C" /> {stats.streak}</div>
           <div className="pill"><Sparkles size={13} color="#F2790C" /> {stats.points}</div>
           <button className="pill pill-icon-only" onClick={db.signOut} title="Sign out"><LogOut size={13} /></button>
         </div>
       </div>
 
-      {tab === "today" && <Today userId={userId} stats={stats} onStatsChange={handleStatsChange} now={now} categories={categories} reloadCategories={reloadCategories} />}
-      {tab === "teach" && <Teach userId={userId} classes={classes} reloadClasses={reloadClasses} />}
-      {tab === "insights" && <Insights userId={userId} stats={stats} classes={classes} />}
-      {tab === "coach" && <Coach userId={userId} stats={stats} classes={classes} />}
+      <div key={tab} className="page-transition">
+        {tab === "today" && <Today userId={userId} stats={stats} onStatsChange={handleStatsChange} now={now} categories={categories} reloadCategories={reloadCategories} />}
+        {tab === "teach" && <Teach userId={userId} classes={classes} reloadClasses={reloadClasses} />}
+        {tab === "insights" && <Insights userId={userId} stats={stats} classes={classes} />}
+        {tab === "coach" && <Coach userId={userId} stats={stats} classes={classes} />}
+      </div>
 
       <BottomNav active={tab} onChange={setTab} />
     </div>

@@ -7,19 +7,26 @@ import PhotoStrip from "./PhotoStrip";
 function fmtTime(d) { return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
 
 export default function TaskCard({
-  task, popup, category, onComplete, onSkip, onReset, onEdit, onDelete,
+  task, popup, category, style, onComplete, onSkip, onReset, onEdit, onDelete,
   onToggleSub, onToggleSet, onAddExercisePhoto, onRemoveExercisePhoto,
 }) {
   const cat = category || { label: task.category, color: "#9c9488", icon_key: "star" };
   const Icon = ICON_REGISTRY[cat.icon_key] || FallbackIcon;
   const isDone = task.status === "done", isSkipped = task.status === "skipped";
   const [expanded, setExpanded] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
   const hasSub = (task.subtasks || []).length > 0;
   const hasGym = task.category === "gym" && (task.exercises || []).length > 0;
   const doneSub = (task.subtasks || []).filter((s) => s.done).length;
 
+  const handleComplete = () => {
+    setJustCompleted(true);
+    onComplete(task);
+    setTimeout(() => setJustCompleted(false), 700);
+  };
+
   return (
-    <div className={`task-card ${isDone ? "done" : ""} ${task.overdue ? "overdue" : ""}`}>
+    <div className={`task-card ${isDone ? "done" : ""} ${task.overdue ? "overdue" : ""} ${justCompleted ? "just-completed" : ""}`} style={style}>
       <div className={`task-node ${task.overdue && !isDone && !isSkipped ? "pulse" : ""}`} style={{ background: isDone ? "#2FA88F" : isSkipped ? "#c9c2b6" : task.overdue ? "#E8556B" : cat.color }} />
       {popup && <div className="points-popup">+{popup}</div>}
       <div className="task-top">
@@ -75,7 +82,7 @@ export default function TaskCard({
       )}
       {!isDone && !isSkipped && (
         <div className="task-actions">
-          <button className="btn btn-done" onClick={() => onComplete(task)}><Check size={13} /> Done</button>
+          <button className="btn btn-done" onClick={handleComplete}><Check size={13} /> Done</button>
           <button className="btn btn-skip" onClick={() => onSkip(task)}><SkipForward size={13} /> Skip</button>
         </div>
       )}

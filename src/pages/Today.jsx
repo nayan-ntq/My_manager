@@ -105,9 +105,9 @@ export default function Today({ userId, stats, onStatsChange, now, categories, r
         </div>
       ) : (
         <div className="timeline">
-          {sorted.map((t) => (
+          {sorted.map((t, i) => (
             <TaskCard key={t.id} task={t} popup={popup && popup.id === t.id ? popup.points : null}
-              category={categoriesByKey[t.category]}
+              category={categoriesByKey[t.category]} style={{ animationDelay: `${Math.min(i, 8) * 0.05}s` }}
               onComplete={completeTask} onSkip={skipTask} onReset={resetTask} onEdit={openEdit}
               onDelete={deleteTaskRow} onToggleSub={toggleSub} onToggleSet={toggleSet}
               onAddExercisePhoto={addExercisePhoto} onRemoveExercisePhoto={removeExercisePhoto} />

@@ -27,7 +27,7 @@ export default function PhotoImportButton({ kind, context, onResult, label = "Im
       <button type="button" className="chip-btn photo-import-btn" onClick={() => inputRef.current?.click()} disabled={busy}>
         {busy ? <Loader2 size={13} className="spin-icon" /> : <Camera size={13} />} {busy ? "Reading photo(s)..." : label}
       </button>
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple={multiple} style={{ display: "none" }} onChange={handleFiles} />
+      <input ref={inputRef} type="file" accept="image/*" multiple={multiple} style={{ display: "none" }} onChange={handleFiles} />
     </>
   );
 }

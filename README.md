@@ -244,3 +244,23 @@ Every saved record can now be edited after the fact, not just deleted:
 (Students, tasks, and categories already had edit options from earlier
 updates.) No database changes in this update \u2014 pure front-end plus five
 small new update functions in the data layer.
+
+## Recent update: animations + photo library access
+
+- **Photo library access fixed** \u2014 every "Import from photo" button was
+  forcing the camera open directly (a `capture="environment"` attribute
+  that most mobile browsers treat as camera-only). Removed it, so tapping
+  any import button now shows the normal picker with Photo Library, Take
+  Photo, and Files as options, everywhere in the app.
+- **Animated logo while loading** \u2014 the loading spinner is now the actual
+  app icon with a soft pulse, orbited by a spinning brand-colored ring,
+  instead of a generic ring.
+- **Tab switches** fade/slide in gently instead of snapping.
+- **Task cards** stagger in on load, and pulse with a soft green glow the
+  moment you mark one done.
+- **Streak flame** flickers subtly while your streak is active.
+- **Bottom nav** shows a small dot under the active tab.
+- The **level progress bar** has a subtle shimmer sweep.
+- The **+ (add task) button** pops in on load instead of appearing instantly.
+
+No database changes \u2014 pure front-end.
