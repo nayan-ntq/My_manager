@@ -1,14 +1,14 @@
 import React, { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, History } from "lucide-react";
 
 /**
  * Concept-wise tracker used by both Correction (understanding) and
- * Performance (accuracy) breakdowns \u2014 same shape, different tag sets.
+ * Performance (accuracy) breakdowns - same shape, different tag sets.
  * Table view: students (sticky left column) x concepts (scrollable columns),
  * one dropdown per cell, plus a "mark all" dropdown per concept column.
  * Student view: pick one student, see all their concepts as a vertical list.
  */
-export default function ConceptTable({ students, concepts, getTag, onSetTag, onBulkSet, tagOptions }) {
+export default function ConceptTable({ students, concepts, getTag, onSetTag, onBulkSet, tagOptions, extraLabel, onViewHistory }) {
   const [view, setView] = useState("table"); // "table" | "student"
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id || "");
 
@@ -50,6 +50,7 @@ export default function ConceptTable({ students, concepts, getTag, onSetTag, onB
                       <select className="concept-select" value={getTag(s.id, c)} onChange={(e) => onSetTag(s.id, c, e.target.value)}>
                         {tagOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
+                      {extraLabel?.(s.id, c) && <div className="concept-extra-label">{extraLabel(s.id, c)}</div>}
                     </td>
                   ))}
                 </tr>
@@ -67,9 +68,19 @@ export default function ConceptTable({ students, concepts, getTag, onSetTag, onB
             {concepts.map((c) => (
               <div className="concept-student-row" key={c}>
                 <span className="concept-student-row-name">{c}</span>
-                <select className="concept-select" value={getTag(selectedStudentId, c)} onChange={(e) => onSetTag(selectedStudentId, c, e.target.value)}>
-                  {tagOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <select className="concept-select" value={getTag(selectedStudentId, c)} onChange={(e) => onSetTag(selectedStudentId, c, e.target.value)}>
+                      {tagOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    {extraLabel?.(selectedStudentId, c) && <div className="concept-extra-label">{extraLabel(selectedStudentId, c)}</div>}
+                  </div>
+                  {onViewHistory && (
+                    <button type="button" className="btn btn-icon" onClick={() => onViewHistory(selectedStudentId, c)} title="View history">
+                      <History size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

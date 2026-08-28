@@ -28,9 +28,18 @@ export const CORRECTION_TITLES = { blank: "Not marked", done: "Done", ab: "Absen
 export const DEFAULT_CORRECTION_TYPES = ["Classwork", "Homework", "Worksheet", "Textbook", "Revision"];
 
 // per-student, per-concept understanding tag on correction records (classwork/homework)
-export const UNDERSTANDING_TAGS = ["blank", "understood", "not-understood", "not-done"];
-export const UNDERSTANDING_MARKS = { blank: { icon: "minus" }, understood: { icon: "check" }, "not-understood": { icon: "x" }, "not-done": { text: "ND" } };
-export const UNDERSTANDING_TITLES = { blank: "Not marked", understood: "Understood", "not-understood": "Not understood", "not-done": "Not done" };
+// per-student, per-concept status on correction records (classwork/homework).
+// "next_date" and "remark" need an extra value alongside the status itself.
+export const CORRECTION_CONCEPT_STATUSES = ["blank", "done", "not_submitted", "absent", "incomplete", "next_date", "remark"];
+export const CORRECTION_CONCEPT_MARKS = {
+  blank: { icon: "minus" }, done: { icon: "check" }, not_submitted: { text: "NS" },
+  absent: { text: "AB" }, incomplete: { text: "IC" }, next_date: { icon: "calendar-clock" }, remark: { text: "..." },
+};
+export const CORRECTION_CONCEPT_TITLES = {
+  blank: "Not marked", done: "Done", not_submitted: "Not submitted", absent: "Absent",
+  incomplete: "Incomplete", next_date: "Extended to a new date", remark: "Remark",
+};
+export const CORRECTION_CONCEPT_NEEDS_VALUE = { next_date: "date", remark: "text" };
 
 // per-student, per-concept tag cycled on the performance grid
 export const CONCEPT_TAGS = ["blank", "accurate", "application", "silly", "gap"];
@@ -53,4 +62,21 @@ export const SEED_TASKS = [
 export const SEED_CLASSES = [
   { name: "Grade 6 - Mathematics", subject: "Mathematics",
     students: ["Aarav Shah", "Diya Patel", "Kabir Mehta", "Isha Rao", "Vihaan Nair"] },
+];
+
+/* ---------- rewards: badges/milestones ---------- */
+// check(stats, aggregates) -> boolean. stats = user_meta row. aggregates = fetchRewardAggregates() result.
+export const BADGES = [
+  { key: "streak_3", label: "3-Day Streak", icon_key: "flame", check: (s) => (s.longest_streak || 0) >= 3 },
+  { key: "streak_7", label: "7-Day Streak", icon_key: "flame", check: (s) => (s.longest_streak || 0) >= 7 },
+  { key: "streak_14", label: "2-Week Streak", icon_key: "flame", check: (s) => (s.longest_streak || 0) >= 14 },
+  { key: "streak_30", label: "30-Day Streak", icon_key: "flame", check: (s) => (s.longest_streak || 0) >= 30 },
+  { key: "streak_100", label: "100-Day Streak", icon_key: "flame", check: (s) => (s.longest_streak || 0) >= 100 },
+  { key: "points_500", label: "500 Points", icon_key: "star", check: (s) => (s.points || 0) >= 500 },
+  { key: "points_2000", label: "2000 Points", icon_key: "star", check: (s) => (s.points || 0) >= 2000 },
+  { key: "planner_10", label: "10 Lessons Logged", icon_key: "book-open", check: (s, a) => (a?.plannerCount || 0) >= 10 },
+  { key: "planner_50", label: "50 Lessons Logged", icon_key: "book-open", check: (s, a) => (a?.plannerCount || 0) >= 50 },
+  { key: "correction_25", label: "25 Correction Records", icon_key: "target", check: (s, a) => (a?.correctionCount || 0) >= 25 },
+  { key: "tests_10", label: "10 Tests Recorded", icon_key: "graduation-cap", check: (s, a) => (a?.performanceCount || 0) >= 10 },
+  { key: "attendance_20", label: "20 Days of Attendance", icon_key: "calendar-clock", check: (s, a) => (a?.attendanceDays || 0) >= 20 },
 ];

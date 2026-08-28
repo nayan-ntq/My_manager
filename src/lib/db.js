@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { SEED_TASKS, SEED_CLASSES, DEFAULT_CATEGORY_SEED } from "./constants";
+import { SEED_TASKS, SEED_CLASSES, DEFAULT_CATEGORY_SEED, BADGES } from "./constants";
 
 /* ---------- auth ---------- */
 
@@ -148,7 +148,7 @@ export async function fetchMeta(userId) {
   const { data, error } = await supabase.from("user_meta").select("*").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   if (data) return data;
-  const defaults = { user_id: userId, display_name: null, points: 0, streak: 0, longest_streak: 0, last_active_day: null };
+  const defaults = { user_id: userId, display_name: null, points: 0, streak: 0, longest_streak: 0, last_active_day: null, badges_earned: [] };
   const { error: insErr } = await supabase.from("user_meta").insert(defaults);
   if (insErr) throw insErr;
   return defaults;
@@ -156,6 +156,109 @@ export async function fetchMeta(userId) {
 export async function saveMeta(userId, patch) {
   const { error } = await supabase.from("user_meta").upsert({ user_id: userId, ...patch });
   if (error) throw error;
+}
+
+/* ---------- rewards: streak + badges ---------- */
+
+function addDaysStr(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A date is "protected" (doesn't require action, doesn't break the streak) if a class was
+ *  explicitly marked a day off that date, or no class meets on that weekday at all. */
+export async function isProtectedDay(userId, date) {
+  const { data: dayOff, error: e1 } = await supabase.from("attendance_records").select("id")
+    .eq("user_id", userId).eq("date", date).eq("is_day_off", true).limit(1);
+  if (e1) throw e1;
+  if (dayOff && dayOff.length) return true;
+
+  const dow = new Date(date + "T00:00:00").getDay();
+  const { count, error: e2 } = await supabase.from("timetable_slots").select("id", { count: "exact", head: true })
+    .eq("user_id", userId).eq("day_of_week", dow);
+  if (e2) throw e2;
+  return (count || 0) === 0;
+}
+
+/**
+ * Credits today's streak/points for a qualifying action (personal important task done,
+ * attendance taken, correction/test marks entered, or a planner entry logged). Bridges
+ * gaps of "protected" days (day-off or no-school weekdays) without breaking the streak.
+ * Safe to call multiple times per day - only the first call each day changes anything.
+ */
+export async function recordStreakActivity(userId, pointsToAdd = 0) {
+  const meta = await fetchMeta(userId);
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (meta.last_active_day === today) {
+    if (pointsToAdd) { await saveMeta(userId, { points: meta.points + pointsToAdd }); return { ...meta, points: meta.points + pointsToAdd }; }
+    return meta;
+  }
+
+  let newStreak;
+  if (!meta.last_active_day) {
+    newStreak = 1;
+  } else {
+    const last = new Date(meta.last_active_day + "T00:00:00");
+    const cur = new Date(today + "T00:00:00");
+    const dayDiff = Math.round((cur - last) / 86400000);
+    if (dayDiff === 1) {
+      newStreak = meta.streak + 1;
+    } else if (dayDiff > 1) {
+      let allProtected = true;
+      for (let i = 1; i < dayDiff; i++) {
+        if (!(await isProtectedDay(userId, addDaysStr(meta.last_active_day, i)))) { allProtected = false; break; }
+      }
+      newStreak = allProtected ? meta.streak + 1 : 1;
+    } else {
+      newStreak = meta.streak; // action logged for a past/backdated date - don't touch streak
+    }
+  }
+
+  const patch = {
+    points: meta.points + pointsToAdd,
+    streak: newStreak,
+    longest_streak: Math.max(meta.longest_streak || 0, newStreak),
+    last_active_day: today,
+  };
+  await saveMeta(userId, patch);
+  return { ...meta, ...patch };
+}
+
+/** Cumulative counts used to check teaching-milestone badges. */
+export async function fetchRewardAggregates(userId) {
+  const [classes, planner, correction, performance, attendance] = await Promise.all([
+    supabase.from("classes").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("planner_entries").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("correction_records").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("performance_records").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("attendance_records").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("is_day_off", false),
+  ]);
+  return {
+    classCount: classes.count || 0,
+    plannerCount: planner.count || 0,
+    correctionCount: correction.count || 0,
+    performanceCount: performance.count || 0,
+    attendanceDays: attendance.count || 0,
+  };
+}
+
+/** Checks every badge definition against current stats/aggregates and persists any newly earned ones. */
+export async function checkAndAwardBadges(userId, meta) {
+  const aggregates = await fetchRewardAggregates(userId);
+  const earned = new Set(meta.badges_earned || []);
+  const newlyEarned = [];
+  for (const badge of BADGES) {
+    if (!earned.has(badge.key) && badge.check(meta, aggregates)) {
+      earned.add(badge.key);
+      newlyEarned.push(badge);
+    }
+  }
+  if (newlyEarned.length) {
+    await saveMeta(userId, { badges_earned: [...earned] });
+  }
+  return { newlyEarned, aggregates, badgesEarned: [...earned] };
 }
 
 /* ---------- teaching: classes + students ---------- */
@@ -377,24 +480,52 @@ export async function createCorrectionRecord(userId, classId, date, title, type,
   if (error) throw error;
   return data;
 }
-export async function updateCorrectionMarks(id, marks) {
+/** Writes the overall record-level status for a student, and logs the change to history (never overwritten). */
+export async function updateCorrectionMarks(userId, id, marks, studentId, status) {
   const { error } = await supabase.from("correction_records").update({ marks }).eq("id", id);
   if (error) throw error;
+  if (studentId) {
+    const { error: logErr } = await supabase.from("correction_status_log").insert({
+      user_id: userId, record_id: id, student_id: studentId, concept: null, status,
+    });
+    if (logErr) throw logErr;
+  }
 }
-export async function updateCorrectionConceptMark(id, currentConceptMarks, studentId, concept, tag) {
+/** Per-concept status for one student, with an optional extra value (a date for "next_date", free text
+ *  for "remark"). Every change is appended to correction_status_log for a full punctuality history,
+ *  while concept_marks holds just the current state for fast display. */
+export async function updateCorrectionConceptMark(userId, id, currentConceptMarks, studentId, concept, status, extra) {
+  const entry = { status, remark: extra?.remark || null, next_date: extra?.next_date || null, marked_at: new Date().toISOString() };
   const conceptMarks = { ...currentConceptMarks };
-  conceptMarks[studentId] = { ...(conceptMarks[studentId] || {}), [concept]: tag };
+  conceptMarks[studentId] = { ...(conceptMarks[studentId] || {}), [concept]: entry };
   const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
   if (error) throw error;
+  const { error: logErr } = await supabase.from("correction_status_log").insert({
+    user_id: userId, record_id: id, student_id: studentId, concept, status, remark: entry.remark, next_date: entry.next_date,
+  });
+  if (logErr) throw logErr;
   return conceptMarks;
 }
-/** Sets every given student's tag for one concept in a single write \u2014 "mark whole class X", then tap exceptions. */
-export async function bulkSetCorrectionConceptMark(id, currentConceptMarks, studentIds, concept, tag) {
+/** Sets every given student's status for one concept in a single write - "mark whole class X", then tap exceptions. */
+export async function bulkSetCorrectionConceptMark(userId, id, currentConceptMarks, studentIds, concept, status) {
+  const entry = { status, remark: null, next_date: null, marked_at: new Date().toISOString() };
   const conceptMarks = { ...currentConceptMarks };
-  for (const sid of studentIds) conceptMarks[sid] = { ...(conceptMarks[sid] || {}), [concept]: tag };
+  for (const sid of studentIds) conceptMarks[sid] = { ...(conceptMarks[sid] || {}), [concept]: entry };
   const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
   if (error) throw error;
+  const { error: logErr } = await supabase.from("correction_status_log").insert(
+    studentIds.map((sid) => ({ user_id: userId, record_id: id, student_id: sid, concept, status }))
+  );
+  if (logErr) throw logErr;
   return conceptMarks;
+}
+/** Full change history for one student on one concept (or the overall record if concept is null) - oldest first. */
+export async function fetchCorrectionHistory(recordId, studentId, concept) {
+  let query = supabase.from("correction_status_log").select("*").eq("record_id", recordId).eq("student_id", studentId);
+  query = concept === null || concept === undefined ? query.is("concept", null) : query.eq("concept", concept);
+  const { data, error } = await query.order("marked_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
 }
 export async function deleteCorrectionRecord(id) {
   const { error } = await supabase.from("correction_records").delete().eq("id", id);

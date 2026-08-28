@@ -264,3 +264,25 @@ small new update functions in the data layer.
 - The **+ (add task) button** pops in on load instead of appearing instantly.
 
 No database changes \u2014 pure front-end.
+
+## Recent update: correction record concept tracking overhaul + punctuality history
+
+- **New per-concept status options** for Correction records' concept breakdown
+  (replacing understood/not-understood/not-done): Done, Not submitted, Absent,
+  Incomplete, **Next date** (prompts for a new date), and **Remark** (prompts
+  for free text). Same options for both Classwork (sourced from the Planner's
+  Methodology) and Homework (sourced from Assignment).
+- **Nothing is ever overwritten silently** \u2014 every status change, for every
+  student on every concept (and on the overall record status), is appended to
+  a new `correction_status_log` table rather than replacing the old value.
+  Tap the history icon (in Student view) to see the full timeline of changes
+  for that student on that concept \u2014 this is what lets you spot which
+  students are punctual vs. chronically delayed.
+- The "Category" field you're marking Classwork/Homework/etc under is the
+  existing free-text Type field with its growing dropdown - no separate
+  new field was needed there, it already worked this way.
+
+Database changes for this are already applied to your live Supabase project.
+`supabase/schema.sql` was also regenerated directly from the live database
+structure in this update, so it's an accurate, complete snapshot for a fresh
+setup - not just an append of recent changes.

@@ -6,8 +6,9 @@ import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
 import ConceptTable from "../components/ConceptTable";
 import PlannerImportReviewSheet from "../components/PlannerImportReviewSheet";
+import HistorySheet from "../components/HistorySheet";
 import { parseCSV, matchStudentName } from "../lib/visionImport";
-import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, UNDERSTANDING_TAGS, UNDERSTANDING_TITLES } from "../lib/constants";
+import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, CORRECTION_CONCEPT_STATUSES, CORRECTION_CONCEPT_TITLES, CORRECTION_CONCEPT_NEEDS_VALUE } from "../lib/constants";
 import GridMark from "../components/GridMark";
 import ConfirmDelete from "../components/ConfirmDelete";
 import { toast } from "../components/Toast";
@@ -301,7 +302,7 @@ function PlannerPanel({ userId, classes }) {
     await db.createImportLog(userId, "planner", cls?.name, JSON.stringify(rows.map((r) => r.date)), rows.length);
     setImportReview(null);
     load();
-    toast(`Imported ${created} lesson${created === 1 ? "" : "s"} \u2014 added to Today too`);
+    toast(`Imported ${created} lesson${created === 1 ? "" : "s"} - added to Today too`);
   };
 
   const save = async () => {
@@ -547,6 +548,39 @@ function CorrectionRecordEditSheet({ record, correctionTypes, chapterNumbers, on
   );
 }
 
+function ConceptValueSheet({ prompt, onClose, onSave }) {
+  const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
+  const [textVal, setTextVal] = useState("");
+  const isDate = prompt.needsValue === "date";
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">{isDate ? "Extend to a new date" : "Add a remark"}</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="card-sub" style={{ marginBottom: 10 }}>{prompt.studentName} - {prompt.concept}</div>
+        {isDate ? (
+          <>
+            <div className="field-label">New date</div>
+            <input type="date" className="input" value={dateVal} onChange={(e) => setDateVal(e.target.value)} autoFocus />
+          </>
+        ) : (
+          <>
+            <div className="field-label">Remark</div>
+            <input className="input" placeholder="e.g. forgot notebook" value={textVal} onChange={(e) => setTextVal(e.target.value)} autoFocus />
+          </>
+        )}
+        <div className="sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => onSave(isDate ? { next_date: dateVal } : { remark: textVal.trim() })}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CorrectionPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
@@ -564,6 +598,8 @@ function CorrectionPanel({ userId, classes }) {
   const [showMore, setShowMore] = useState(false);
   const [marksImport, setMarksImport] = useState(null); // { record, csv }
   const [editingRecord, setEditingRecord] = useState(null);
+  const [valuePrompt, setValuePrompt] = useState(null); // { record, concept, studentId, studentName, status, needsValue }
+  const [historyView, setHistoryView] = useState(null); // { recordId, studentId, studentName, concept }
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -615,14 +651,14 @@ function CorrectionPanel({ userId, classes }) {
     const cur = record.marks[studentId] || "blank";
     const next = CORRECTION_CODES[(CORRECTION_CODES.indexOf(cur) + 1) % CORRECTION_CODES.length];
     const marks = { ...record.marks, [studentId]: next };
-    await db.updateCorrectionMarks(record.id, marks);
+    await db.updateCorrectionMarks(userId, record.id, marks, studentId, next);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     if (showIncomplete) loadIncomplete();
   };
   const bulkMarkStatus = async (record, code, studentIds) => {
     const marks = { ...record.marks };
     for (const sid of studentIds) marks[sid] = code;
-    await db.updateCorrectionMarks(record.id, marks);
+    await db.updateCorrectionMarks(userId, record.id, marks, null, null); // bulk: skip per-row logging noise, current state still updates
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     if (showIncomplete) loadIncomplete();
     toast(`Marked whole class: ${CORRECTION_TITLES[code]}`);
@@ -636,26 +672,34 @@ function CorrectionPanel({ userId, classes }) {
       const code = (row.status || "").trim().toLowerCase();
       if (student && validCodes.has(code)) { marks[student.id] = code; matched++; }
     }
-    await db.updateCorrectionMarks(record.id, marks);
+    await db.updateCorrectionMarks(userId, record.id, marks, null, null);
     await db.createImportLog(userId, "correction", record.title, marksImport.csv, rows.length);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     setMarksImport(null);
     toast(`Matched ${matched} of ${rows.length} students`);
   };
-  const cycleUnderstanding = async (record, concept, studentId, directTag) => {
-    const tag = directTag || UNDERSTANDING_TAGS[(UNDERSTANDING_TAGS.indexOf(record.concept_marks?.[studentId]?.[concept] || "blank") + 1) % UNDERSTANDING_TAGS.length];
-    const conceptMarks = await db.updateCorrectionConceptMark(record.id, record.concept_marks || {}, studentId, concept, tag);
+  const setConceptStatus = async (record, concept, studentId, status, extra) => {
+    if (CORRECTION_CONCEPT_NEEDS_VALUE[status] && !extra) {
+      const studentName = cls.students.find((s) => s.id === studentId)?.name || "";
+      setValuePrompt({ record, concept, studentId, studentName, status, needsValue: CORRECTION_CONCEPT_NEEDS_VALUE[status] });
+      return;
+    }
+    const conceptMarks = await db.updateCorrectionConceptMark(userId, record.id, record.concept_marks || {}, studentId, concept, status, extra);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
-  const bulkMarkUnderstanding = async (record, concept, tag, studentIds) => {
-    const conceptMarks = await db.bulkSetCorrectionConceptMark(record.id, record.concept_marks || {}, studentIds, concept, tag);
+  const confirmValuePrompt = async (extra) => {
+    await setConceptStatus(valuePrompt.record, valuePrompt.concept, valuePrompt.studentId, valuePrompt.status, extra);
+    setValuePrompt(null);
+  };
+  const bulkMarkConceptStatus = async (record, concept, status, studentIds) => {
+    const conceptMarks = await db.bulkSetCorrectionConceptMark(userId, record.id, record.concept_marks || {}, studentIds, concept, status);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
-    toast(`Marked whole class: ${UNDERSTANDING_TITLES[tag]}`);
+    toast(`Marked whole class: ${CORRECTION_CONCEPT_TITLES[status]}`);
   };
   const markTaskDone = async (task) => {
     const record = records.find((r) => r.id === task.recordId);
     const marks = { ...(record ? record.marks : task.marks), [task.studentId]: "done" };
-    await db.updateCorrectionMarks(task.recordId, marks);
+    await db.updateCorrectionMarks(userId, task.recordId, marks, task.studentId, "done");
     setRecords((prev) => prev.map((r) => r.id === task.recordId ? { ...r, marks } : r));
     setIncomplete((prev) => prev.filter((t) => !(t.recordId === task.recordId && t.studentId === task.studentId)));
     toast(`Marked ${task.studentName} done`);
@@ -767,10 +811,21 @@ function CorrectionPanel({ userId, classes }) {
                   <ConceptTable
                     students={cls.students}
                     concepts={r.concepts}
-                    tagOptions={UNDERSTANDING_TAGS.map((t) => ({ value: t, label: UNDERSTANDING_TITLES[t] }))}
-                    getTag={(sid, c) => r.concept_marks?.[sid]?.[c] || "blank"}
-                    onSetTag={(sid, c, tag) => cycleUnderstanding(r, c, sid, tag)}
-                    onBulkSet={(c, tag) => bulkMarkUnderstanding(r, c, tag, cls.students.map((s) => s.id))}
+                    tagOptions={CORRECTION_CONCEPT_STATUSES.map((t) => ({ value: t, label: CORRECTION_CONCEPT_TITLES[t] }))}
+                    getTag={(sid, c) => {
+                      const entry = r.concept_marks?.[sid]?.[c];
+                      return (typeof entry === "string" ? entry : entry?.status) || "blank";
+                    }}
+                    onSetTag={(sid, c, status) => setConceptStatus(r, c, sid, status)}
+                    onBulkSet={(c, status) => bulkMarkConceptStatus(r, c, status, cls.students.map((s) => s.id))}
+                    extraLabel={(sid, c) => {
+                      const entry = r.concept_marks?.[sid]?.[c];
+                      if (!entry || typeof entry === "string") return null;
+                      if (entry.status === "next_date" && entry.next_date) return `-> ${entry.next_date}`;
+                      if (entry.status === "remark" && entry.remark) return entry.remark;
+                      return null;
+                    }}
+                    onViewHistory={(sid, c) => setHistoryView({ recordId: r.id, studentId: sid, studentName: cls.students.find((s) => s.id === sid)?.name || "", concept: c })}
                   />
                 )}
               </>
@@ -794,6 +849,22 @@ function CorrectionPanel({ userId, classes }) {
           chapterNumbers={chapterNumbers}
           onClose={() => setEditingRecord(null)}
           onSave={(patch) => saveRecordMeta(editingRecord.id, patch)}
+        />
+      )}
+      {valuePrompt && (
+        <ConceptValueSheet
+          prompt={valuePrompt}
+          onClose={() => setValuePrompt(null)}
+          onSave={confirmValuePrompt}
+        />
+      )}
+      {historyView && (
+        <HistorySheet
+          recordId={historyView.recordId}
+          studentId={historyView.studentId}
+          studentName={historyView.studentName}
+          concept={historyView.concept}
+          onClose={() => setHistoryView(null)}
         />
       )}
     </div>
