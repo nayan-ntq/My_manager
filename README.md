@@ -265,6 +265,66 @@ small new update functions in the data layer.
 
 No database changes \u2014 pure front-end.
 
+## Recent update: school admin mode
+
+- **Freeform hierarchy.** From School admin (a new home-page section,
+  visible only to admins), build your school's structure however it
+  actually works — e.g. Lower Secondary, then Math/Bio/English under it,
+  then class and section — as many levels deep as you want. Classes can
+  be assigned to any spot in it.
+- **Roles**: teacher, coordinator, school admin, super admin (the last is
+  reserved for the not-yet-built multi-school super-admin mode). The
+  teacher who creates a school becomes its admin automatically.
+- **Invite codes** replace email invites (no email service is set up) —
+  an admin generates a short code for a role (optionally scoped to one
+  part of the hierarchy, for coordinators), and the person joining enters
+  it from the new "Join with a code" option on first login.
+- **Planner sign-off.** A teacher can submit a planner entry for review;
+  it shows a status badge (Awaiting sign-off / Approved / Sent back).
+  Coordinators and admins get a "Sign-off" home-page section listing
+  everything waiting on them, scoped to their assigned part of the
+  hierarchy (or the whole school for admins), with approve / send-back
+  (with an optional note).
+- New tables: `divisions` (the hierarchy), `school_invites`, `profiles`
+  (a small email mirror of `auth.users`, since Supabase doesn't expose
+  that table to the client — needed to show names in the People tab).
+  `school_members` gained a `division_id` (scopes a coordinator) and the
+  `coordinator` role. `planner_entries` gained `signoff_status`,
+  `signoff_by`, `signoff_at`, `signoff_note`. A database trigger stops a
+  reviewer from editing anything on a planner entry except the sign-off
+  fields, even though they can now see and update entries outside the
+  ones they wrote.
+
+## Recent update: teacher mode (personal planner removed) + home page redesign
+
+- **Personal side removed from the app.** The Today tab, points/streak,
+  workout logger, and user-editable task categories are gone from the UI.
+  The app now opens straight into teaching. (The underlying database
+  tables for these — tasks, subtasks, exercises, exercise_sets,
+  task_categories, user_meta — still exist with your real historical
+  data; they were left alone, just unused, pending confirmation to drop
+  them.)
+- **Teachers now belong to a school.** First login after this update asks
+  for your school's name (one-time), creates it, and attaches your
+  existing classes to it. New classes join automatically. This is the
+  foundation for the upcoming school-admin and super-admin modes
+  (inviting teachers, managing divisions). New tables: `schools`,
+  `school_members`; `classes.school_id` added.
+- **New home page.** Teach now opens on a friendly list of sections
+  (Planner, Attendance, Correction, Scores, Absences, Timetable, Classes)
+  with icons and short descriptions, plus a small classes/students
+  summary card, replacing the old segmented tab bar. Tapping a section
+  opens it with a back button; the sections themselves are unchanged.
+- **Coach** now only receives teaching data (no personal tasks/streak),
+  and its system prompt was updated to match.
+- **Insights** now shows only teaching stats (classes, students,
+  attendance, avg test score, a 7-day attendance chart) and no longer
+  double-counts partial-absence days toward the attendance percentage.
+
+No new photo-import, correction-status, or Coach-reminder features in
+this update — those are still on the list from the planner/correction
+redesign notes.
+
 ## Recent update: correction record concept tracking overhaul + punctuality history
 
 - **New per-concept status options** for Correction records' concept breakdown
@@ -286,3 +346,14 @@ Database changes for this are already applied to your live Supabase project.
 `supabase/schema.sql` was also regenerated directly from the live database
 structure in this update, so it's an accurate, complete snapshot for a fresh
 setup - not just an append of recent changes.
+
+## Recent update: register-style correction table
+
+Correction tab now leads with one continuous table matching the physical
+correction book: students down the side (sticky), every correction record as
+its own scrollable column, tap a cell to cycle status. Records with tracked
+topics get a small dot on the cell - tap it to flag exactly which topics are
+incomplete for that student in a single-tap-per-topic list, without leaving
+the table. Tap a column header for full details (concept table, edit, photo
+import, delete). No database changes - reuses everything from the prior
+concept-tracking + history update.
