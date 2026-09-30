@@ -194,6 +194,9 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .absent-toggle { font-size:10.5px; font-weight:800; padding:6px 8px; }
 .absent-toggle.on { background:#E8556B; color:#fff; }
 .badge-mini { font-size:10px; font-weight:800; color:#F2790C; background:#F2790C15; padding:2px 6px; border-radius:6px; margin-left:4px; }
+.badge-mini.signoff-pending { color:#D9A441; background:#D9A44115; }
+.badge-mini.signoff-approved { color:#2FA88F; background:#2FA88F15; }
+.badge-mini.signoff-rejected { color:#E8556B; background:#E8556B15; }
 
 .marks-row { display:flex; align-items:center; justify-content:space-between; padding:7px 2px; border-bottom:1px solid #F1ECE3; }
 .marks-row:last-child { border-bottom:none; }
@@ -423,8 +426,77 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .concept-extra-label { font-size: 10px; color: #7a7266; margin-top: 3px; text-align: center; line-height: 1.3; max-width: 90px; }
 .concept-student-row .concept-extra-label { text-align: right; }
 
+/* Teach home: summary card + friendly section list */
+.home-summary-card { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 18px 16px; }
+.home-summary-num { font-family: 'Baloo 2', sans-serif; font-size: 26px; font-weight: 800; color: #2A2723; }
+.home-summary-label { font-size: 12.5px; color: #9c9488; font-weight: 600; }
+.home-summary-divider { width: 1px; height: 26px; background: #ECE6DE; margin: 0 10px; }
+
+.home-list { display: flex; flex-direction: column; gap: 10px; }
+.home-list-item {
+  display: flex; align-items: center; gap: 13px; width: 100%; text-align: left;
+  background: #fff; border: 1px solid #ECE6DE; border-radius: 16px; padding: 14px 14px;
+  cursor: pointer; font-family: inherit; box-shadow: 0 1px 2px rgba(51,48,43,0.03);
+  transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.home-list-item:active { transform: scale(0.98); }
+.home-list-item:hover { box-shadow: 0 4px 14px rgba(51,48,43,0.08); border-color: #ECE6DE; }
+.home-list-icon {
+  width: 42px; height: 42px; border-radius: 13px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.home-list-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-list-title { font-size: 15px; font-weight: 700; color: #2A2723; }
+.home-list-sub { font-size: 12px; color: #9c9488; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-list-chevron { color: #c9c2b6; flex-shrink: 0; }
+
+.section-back {
+  display: inline-flex; align-items: center; gap: 6px; background: none; border: none;
+  color: #2A2723; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer;
+  padding: 2px 0 16px; margin: 0;
+}
+.section-back-icon {
+  width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+}
+
 /* correction status history */
 .history-list { display: flex; flex-direction: column; gap: 2px; }
 .history-row { display: flex; gap: 10px; padding: 8px 0; position: relative; }
 .history-row-dot { width: 8px; height: 8px; border-radius: 50%; background: #F2790C; margin-top: 5px; flex-shrink: 0; }
 .history-row-status { font-size: 13.5px; font-weight: 600; color: #33302B; }
+
+/* correction register table (matches the physical correction book) */
+.register-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.register-table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+.register-table th, .register-table td { padding: 6px 4px; border-bottom: 1px solid #F1ECE3; text-align: center; }
+.register-col-header { cursor: pointer; min-width: 54px; padding-top: 8px; }
+.register-col-type { font-size: 9.5px; font-weight: 800; color: #7a7266; text-transform: uppercase; }
+.register-col-date { font-size: 11px; font-weight: 700; color: #33302B; }
+.register-sticky-col { position: sticky; left: 0; z-index: 2; background: #fff; text-align: left; padding-left: 16px; box-shadow: 2px 0 4px rgba(0,0,0,0.04); }
+.register-student-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.register-cell-wrap { position: relative; }
+.register-cell { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #ECE6DE; background: #FAF8F5; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #c9c2b6; }
+.register-cell.code-done { background: #2FA88F17; border-color: #2FA88F55; color: #2FA88F; }
+.register-cell.code-ab { background: #E8556B17; border-color: #E8556B55; color: #E8556B; }
+.register-cell.code-ic { background: #F2790C17; border-color: #F2790C55; color: #F2790C; }
+.register-cell.code-ns { background: #8B7FC717; border-color: #8B7FC755; color: #8B7FC7; }
+.register-concept-dot {
+  position: absolute; top: -4px; right: -4px; width: 15px; height: 15px; border-radius: 50%;
+  background: #ECE6DE; border: none; color: #9c9488; font-size: 9px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.register-concept-dot.has-incomplete { background: #F2790C; color: #fff; }
+
+/* quick concept-flagging sheet */
+.quick-concept-list { display: flex; flex-direction: column; gap: 8px; }
+.quick-concept-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #FAF8F5; border: 1px solid #ECE6DE; border-radius: 12px; padding: 12px 14px;
+  cursor: pointer; font-family: inherit; text-align: left; width: 100%;
+}
+.quick-concept-name { font-size: 14px; font-weight: 600; color: #33302B; }
+.quick-concept-mark { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #7a7266; }
+.quick-concept-row.status-done { border-color: #2FA88F55; background: #2FA88F0d; }
+.quick-concept-row.status-incomplete { border-color: #F2790C55; background: #F2790C0d; }
+.quick-concept-row.status-absent, .quick-concept-row.status-not_submitted { border-color: #E8556B55; background: #E8556B0d; }
+.quick-concept-row.status-next_date, .quick-concept-row.status-remark { border-color: #8B7FC755; background: #8B7FC70d; }

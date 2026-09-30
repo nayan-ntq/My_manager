@@ -1,8 +1,7 @@
 import React from "react";
-import { Home, School, BarChart3, Sparkles } from "lucide-react";
+import { School, BarChart3, Sparkles } from "lucide-react";
 
 const TABS = [
-  { key: "today", label: "Today", icon: Home },
   { key: "teach", label: "Teach", icon: School },
   { key: "insights", label: "Insights", icon: BarChart3 },
   { key: "coach", label: "Coach", icon: Sparkles },

@@ -3,13 +3,13 @@ import { Send, Sparkles } from "lucide-react";
 import * as db from "../lib/db";
 
 const SUGGESTIONS = [
-  "How's my week looking?",
   "Which class needs the most attention right now?",
   "Who's improving and who's falling behind?",
   "What concepts are students weakest on?",
+  "Which students have incomplete correction work?",
 ];
 
-export default function Coach({ userId, stats }) {
+export default function Coach({ userId, school }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,9 +24,14 @@ export default function Coach({ userId, stats }) {
     setMessages(next);
     setLoading(true);
     try {
-      // Full app snapshot only needs to be pulled and sent once per conversation  - 
-      // the model keeps it in context for the rest of the thread.
-      const context = messages.length === 0 ? await db.fetchFullAppData(userId) : undefined;
+      // The class snapshot only needs to be pulled and sent once per conversation -
+      // the model keeps it in context for the rest of the thread. Only teaching
+      // data is forwarded; personal-planner fields are dropped here.
+      let context;
+      if (messages.length === 0) {
+        const full = await db.fetchFullAppData(userId);
+        context = { school: school?.name || null, classes: full.classes };
+      }
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -49,7 +54,7 @@ export default function Coach({ userId, stats }) {
       <div className="chat-scroll" style={{ flex: 1 }}>
         {messages.length === 0 && (
           <div className="card">
-            <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={14} /> Ask about your patterns</div>
+            <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={14} /> Ask about your classes</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {SUGGESTIONS.map((s) => <button key={s} className="chip-btn" onClick={() => send(s)}>{s}</button>)}
             </div>

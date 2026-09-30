@@ -19,7 +19,7 @@ export default function CsvReviewSheet({ title, csv, columns, onClose, onConfirm
           <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="card-sub" style={{ marginBottom: 10 }}>
-          Gemini read {rows.length} row{rows.length === 1 ? "" : "s"}. Review and fix anything before importing \u2014 nothing is saved yet.
+          Gemini read {rows.length} row{rows.length === 1 ? "" : "s"}. Review and fix anything before importing - nothing is saved yet.
         </div>
         <textarea className="input textarea csv-textarea" value={text} onChange={(e) => setText(e.target.value)} rows={10} />
         {rows.length > 0 && (
@@ -29,7 +29,7 @@ export default function CsvReviewSheet({ title, csv, columns, onClose, onConfirm
             </div>
             {rows.slice(0, 8).map((row, i) => (
               <div className="csv-preview-row" key={i}>
-                {columns.map((c) => <span key={c}>{row[c.toLowerCase()] || "\u2014"}</span>)}
+                {columns.map((c) => <span key={c}>{row[c.toLowerCase()] || "-"}</span>)}
               </div>
             ))}
             {rows.length > 8 && <div className="card-sub" style={{ padding: "6px 0" }}>+{rows.length - 8} more rows</div>}

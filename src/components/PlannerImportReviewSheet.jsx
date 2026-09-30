@@ -5,7 +5,7 @@ import { X, Trash2, CalendarClock } from "lucide-react";
  * Shows every lesson entry Gemini extracted from the photo(s) - possibly
  * spanning several dates - for review before anything is saved. Each entry
  * is editable (date, chapter, concepts) or removable. Confirming creates a
- * planner entry AND a matching "teach this" task on Today for each date.
+ * planner entry for each date.
  */
 export default function PlannerImportReviewSheet({ entries, onClose, onConfirm }) {
   const [rows, setRows] = useState(
@@ -45,7 +45,7 @@ export default function PlannerImportReviewSheet({ entries, onClose, onConfirm }
         </div>
         <div className="card-sub" style={{ marginBottom: 12 }}>
           Gemini found {rows.length} lesson{rows.length === 1 ? "" : "s"}. Review dates and details before saving - each
-          one becomes a Planner entry, and shows up on Today for that date.
+          one becomes a Planner entry.
         </div>
 
         {rows.length === 0 ? (

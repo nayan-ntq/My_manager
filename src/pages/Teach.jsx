@@ -1,18 +1,22 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, UserX, CalendarClock } from "lucide-react";
+import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck } from "lucide-react";
 import { Segmented } from "../components/Shared";
-import PhotoStrip from "../components/PhotoStrip";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
 import ConceptTable from "../components/ConceptTable";
 import PlannerImportReviewSheet from "../components/PlannerImportReviewSheet";
 import HistorySheet from "../components/HistorySheet";
+import CorrectionRegisterTable from "../components/CorrectionRegisterTable";
+import ConceptQuickSheet from "../components/ConceptQuickSheet";
 import { parseCSV, matchStudentName } from "../lib/visionImport";
 import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, CORRECTION_CONCEPT_STATUSES, CORRECTION_CONCEPT_TITLES, CORRECTION_CONCEPT_NEEDS_VALUE } from "../lib/constants";
 import GridMark from "../components/GridMark";
 import ConfirmDelete from "../components/ConfirmDelete";
 import { toast } from "../components/Toast";
 import * as db from "../lib/db";
+import * as school from "../lib/school";
+import AdminPanel from "../components/AdminPanel";
+import SignoffPanel from "../components/SignoffPanel";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
@@ -198,7 +202,6 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
     objectives: entry.objectives || "", methodology: entry.methodology || "", resources: entry.resources || "",
     assignment: entry.assignment || "", reflection: entry.reflection || "",
     conceptsInput: (entry.concepts || []).join(", "), exercisesInput: (entry.exercise_list || []).join(", "),
-    photos: entry.photos || [],
   });
 
   const save = () => {
@@ -209,7 +212,6 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
       assignment: form.assignment, reflection: form.reflection,
       concepts: form.conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
       exercise_list: form.exercisesInput.split(",").map((s) => s.trim()).filter(Boolean),
-      photos: form.photos,
     });
   };
 
@@ -238,8 +240,6 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
         <input className="input" value={form.conceptsInput} onChange={(e) => setForm({ ...form, conceptsInput: e.target.value })} />
         <div className="field-label">Exercises covered</div>
         <input className="input" value={form.exercisesInput} onChange={(e) => setForm({ ...form, exercisesInput: e.target.value })} />
-        <div className="field-label">Photos</div>
-        <PhotoStrip photos={form.photos} onAdd={(url) => setForm({ ...form, photos: [...form.photos, url] })} onRemove={(pi) => setForm({ ...form, photos: form.photos.filter((_, idx) => idx !== pi) })} max={6} />
         <div className="sheet-actions">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="btn btn-primary" onClick={save}>Save</button>
@@ -253,7 +253,7 @@ function PlannerPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [date, setDate] = useState(todayKey());
-  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "", photos: [] });
+  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "" });
   const [entries, setEntries] = useState([]);
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -294,15 +294,14 @@ function PlannerPanel({ userId, classes }) {
         chapter_number: row.chapter_number, chapter: row.chapter || "Untitled lesson",
         objectives: row.objectives, methodology: row.methodology, resources: row.resources,
         assignment: row.assignment, reflection: row.reflection, concepts: row.concepts,
-        exercise_list: row.exercise_list, photos: [],
+        exercise_list: row.exercise_list,
       });
-      await db.createTeachingTask(userId, row.date, classId, cls?.name || "Class", row.chapter);
       created++;
     }
     await db.createImportLog(userId, "planner", cls?.name, JSON.stringify(rows.map((r) => r.date)), rows.length);
     setImportReview(null);
     load();
-    toast(`Imported ${created} lesson${created === 1 ? "" : "s"} - added to Today too`);
+    toast(`Imported ${created} lesson${created === 1 ? "" : "s"}`);
   };
 
   const save = async () => {
@@ -313,16 +312,16 @@ function PlannerPanel({ userId, classes }) {
       resources: form.resources, assignment: form.assignment, reflection: form.reflection,
       concepts: form.conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
       exercise_list: form.exercisesInput.split(",").map((s) => s.trim()).filter(Boolean),
-      photos: form.photos,
     };
     await db.createPlannerEntry(userId, classId, date, payload);
-    setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "", photos: [] });
+    setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", conceptsInput: "", exercisesInput: "" });
     setAutoFilled(false);
     load();
     toast("Planner entry saved");
   };
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
   const saveEntry = async (id, patch) => { await db.updatePlannerEntry(id, patch); setEditingEntry(null); load(); toast("Planner entry updated"); };
+  const submitSignoff = async (id) => { await school.submitForSignoff(id); load(); toast("Sent for sign-off"); };
 
   return (
     <div>
@@ -363,13 +362,21 @@ function PlannerPanel({ userId, classes }) {
         <input className="input" placeholder="e.g. Equivalent fractions, LCM" value={form.conceptsInput} onChange={(e) => setForm({ ...form, conceptsInput: e.target.value })} />
         <div className="field-label">Exercises covered (comma-separated)</div>
         <input className="input" placeholder="e.g. Ex 3.1, Ex 3.2" value={form.exercisesInput} onChange={(e) => setForm({ ...form, exercisesInput: e.target.value })} />
-        <div className="field-label">Photos (board work, worksheets, textbook pages...)</div>
-        <PhotoStrip photos={form.photos} onAdd={(url) => setForm({ ...form, photos: [...form.photos, url] })} onRemove={(pi) => setForm({ ...form, photos: form.photos.filter((_, idx) => idx !== pi) })} max={6} />
         <button className="btn btn-primary" style={{ marginTop: 12, width: "100%" }} onClick={save}><Plus size={14} /> Save entry</button>
       </div>
       {entries.map((e) => (
         <div className="card planner-entry" key={e.id}>
-          <div className="card-title-row"><div className="card-sub mono">{e.date}</div><ConfirmDelete onConfirm={() => remove(e.id)} size={13} /></div>
+          <div className="card-title-row">
+            <div className="card-sub mono">{e.date}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {e.signoff_status && e.signoff_status !== "none" && (
+                <span className={`badge-mini signoff-${e.signoff_status}`}>
+                  {e.signoff_status === "pending" ? "Awaiting sign-off" : e.signoff_status === "approved" ? "Approved" : "Sent back"}
+                </span>
+              )}
+              <ConfirmDelete onConfirm={() => remove(e.id)} size={13} />
+            </div>
+          </div>
           <div onClick={() => setEditingEntry(e)} style={{ cursor: "pointer" }}>
             <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
             {e.objectives && <div className="planner-field"><span className="planner-label">Objectives:</span> {e.objectives}</div>}
@@ -378,8 +385,12 @@ function PlannerPanel({ userId, classes }) {
             {e.reflection && <div className="planner-field"><span className="planner-label">Reflection:</span> {e.reflection}</div>}
             {e.concepts?.length > 0 && <div className="planner-field"><span className="planner-label">Concepts:</span> {e.concepts.join(", ")}</div>}
             {e.exercise_list?.length > 0 && <div className="planner-field"><span className="planner-label">Exercises:</span> {e.exercise_list.join(", ")}</div>}
+            {e.signoff_status === "rejected" && e.signoff_note && <div className="planner-field" style={{ color: "#E8556B" }}><span className="planner-label">Note:</span> {e.signoff_note}</div>}
           </div>
           {e.photos?.length > 0 && <div className="photo-strip" style={{ marginTop: 8 }}>{e.photos.map((p, i) => <div className="photo-thumb photo-thumb-view" key={i}><img src={p} alt="" /></div>)}</div>}
+          {(!e.signoff_status || e.signoff_status === "none" || e.signoff_status === "rejected") && (
+            <button type="button" className="chip-btn" style={{ marginTop: 10 }} onClick={() => submitSignoff(e.id)}>Submit for sign-off</button>
+          )}
         </div>
       ))}
       {importReview && (
@@ -600,6 +611,8 @@ function CorrectionPanel({ userId, classes }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [valuePrompt, setValuePrompt] = useState(null); // { record, concept, studentId, studentName, status, needsValue }
   const [historyView, setHistoryView] = useState(null); // { recordId, studentId, studentName, concept }
+  const [recordDetail, setRecordDetail] = useState(null);
+  const [conceptQuick, setConceptQuick] = useState(null); // { record, studentId }
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -769,70 +782,87 @@ function CorrectionPanel({ userId, classes }) {
         </div>
       )}
 
-      {cls && records.map((r) => {
-        const isOpen = !!expanded[r.id];
-        return (
-          <div className="card" key={r.id}>
-            <div className="card-title-row">
-              <div style={{ cursor: "pointer" }} onClick={() => setEditingRecord(r)}>
-                <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.type}</span></div>
-                <div className="card-sub mono">{r.date}{r.chapter_number ? `  |  Ch ${r.chapter_number}` : ""}</div>
-                {r.concepts?.length > 0 && <div className="card-sub">Covers: {r.concepts.join(", ")}</div>}
-              </div>
-              <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />
-            </div>
-            <div className="bulk-mark-row" style={{ marginBottom: 8 }}>
-              <span className="bulk-mark-label">Mark all:</span>
-              {CORRECTION_CODES.filter((c) => c !== "blank").map((code) => (
-                <button key={code} type="button" className="bulk-mark-btn" title={CORRECTION_TITLES[code]}
-                  onClick={() => bulkMarkStatus(r, code, cls.students.map((s) => s.id))}>
-                  <GridMark mark={CORRECTION_MARKS[code]} size={12} />
-                </button>
-              ))}
-              <PhotoImportButton kind="correction" context={{ students: cls.students.map((s) => s.name) }} onResult={({ csv }) => setMarksImport({ record: r, csv })} label="From photo" />
-            </div>
-            <div className="grid-table">
-              {cls.students.map((s) => {
-                const code = r.marks[s.id] || "blank";
-                return (
-                  <button key={s.id} className={`grid-cell code-${code}`} title={CORRECTION_TITLES[code]} onClick={() => cycle(r, s.id)}>
-                    <span className="grid-cell-name">{s.name}</span><span className="grid-cell-code"><GridMark mark={CORRECTION_MARKS[code]} /></span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="legend">tap to cycle  |  blank  ->  done  ->  ab absent  ->  ic incomplete  ->  ns not submitted</div>
-            {(r.concepts || []).length > 0 && (
-              <>
-                <button className="expand-toggle" onClick={() => setExpanded({ ...expanded, [r.id]: !isOpen })}>
-                  {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Concept understanding
-                </button>
-                {isOpen && (
-                  <ConceptTable
-                    students={cls.students}
-                    concepts={r.concepts}
-                    tagOptions={CORRECTION_CONCEPT_STATUSES.map((t) => ({ value: t, label: CORRECTION_CONCEPT_TITLES[t] }))}
-                    getTag={(sid, c) => {
-                      const entry = r.concept_marks?.[sid]?.[c];
-                      return (typeof entry === "string" ? entry : entry?.status) || "blank";
-                    }}
-                    onSetTag={(sid, c, status) => setConceptStatus(r, c, sid, status)}
-                    onBulkSet={(c, status) => bulkMarkConceptStatus(r, c, status, cls.students.map((s) => s.id))}
-                    extraLabel={(sid, c) => {
-                      const entry = r.concept_marks?.[sid]?.[c];
-                      if (!entry || typeof entry === "string") return null;
-                      if (entry.status === "next_date" && entry.next_date) return `-> ${entry.next_date}`;
-                      if (entry.status === "remark" && entry.remark) return entry.remark;
-                      return null;
-                    }}
-                    onViewHistory={(sid, c) => setHistoryView({ recordId: r.id, studentId: sid, studentName: cls.students.find((s) => s.id === sid)?.name || "", concept: c })}
-                  />
-                )}
-              </>
-            )}
+      {cls && records.length > 0 && (
+        <div className="card" style={{ padding: "12px 0 16px" }}>
+          <div className="card-title" style={{ padding: "0 16px" }}>Correction register</div>
+          <CorrectionRegisterTable
+            students={cls.students}
+            records={records}
+            onCycleStatus={cycle}
+            onOpenConceptQuick={(record, studentId) => setConceptQuick({ record, studentId })}
+            onOpenRecordDetail={(record) => setRecordDetail(record)}
+          />
+          <div className="legend" style={{ padding: "0 16px" }}>tap a cell to cycle status  |  tap the dot to flag which topics  |  tap a column header for full details</div>
+        </div>
+      )}
+      {conceptQuick && (
+        <ConceptQuickSheet
+          record={records.find((r) => r.id === conceptQuick.record.id) || conceptQuick.record}
+          student={cls.students.find((s) => s.id === conceptQuick.studentId)}
+          getStatus={(concept) => {
+            const rec = records.find((r) => r.id === conceptQuick.record.id) || conceptQuick.record;
+            const entry = rec.concept_marks?.[conceptQuick.studentId]?.[concept];
+            return (typeof entry === "string" ? entry : entry?.status) || "blank";
+          }}
+          onSetStatus={(concept, status) => setConceptStatus(conceptQuick.record, concept, conceptQuick.studentId, status)}
+          onClose={() => setConceptQuick(null)}
+        />
+      )}
+      {recordDetail && cls && (
+        <div className="overlay" onClick={() => setRecordDetail(null)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const r = records.find((rec) => rec.id === recordDetail.id) || recordDetail;
+              const isOpen = true;
+              return (
+                <>
+                  <div className="sheet-head">
+                    <h2 className="sheet-title">{r.title} <span className="badge-mini">{r.type}</span></h2>
+                    <button type="button" className="btn btn-icon" onClick={() => setRecordDetail(null)}><X size={16} /></button>
+                  </div>
+                  <div className="card-sub mono" style={{ marginBottom: 4 }}>{r.date}{r.chapter_number ? `  |  Ch ${r.chapter_number}` : ""}</div>
+                  {r.concepts?.length > 0 && <div className="card-sub" style={{ marginBottom: 10 }}>Covers: {r.concepts.join(", ")}</div>}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                    <button className="btn btn-ghost" onClick={() => { setRecordDetail(null); setEditingRecord(r); }}>Edit details</button>
+                    <ConfirmDelete onConfirm={() => { removeRecord(r.id); setRecordDetail(null); }} size={14} />
+                  </div>
+                  <div className="bulk-mark-row" style={{ marginBottom: 8 }}>
+                    <span className="bulk-mark-label">Mark all:</span>
+                    {CORRECTION_CODES.filter((c) => c !== "blank").map((code) => (
+                      <button key={code} type="button" className="bulk-mark-btn" title={CORRECTION_TITLES[code]}
+                        onClick={() => bulkMarkStatus(r, code, cls.students.map((s) => s.id))}>
+                        <GridMark mark={CORRECTION_MARKS[code]} size={12} />
+                      </button>
+                    ))}
+                    <PhotoImportButton kind="correction" context={{ students: cls.students.map((s) => s.name) }} onResult={({ csv }) => setMarksImport({ record: r, csv })} label="From photo" />
+                  </div>
+                  {(r.concepts || []).length > 0 && (
+                    <ConceptTable
+                      students={cls.students}
+                      concepts={r.concepts}
+                      tagOptions={CORRECTION_CONCEPT_STATUSES.map((t) => ({ value: t, label: CORRECTION_CONCEPT_TITLES[t] }))}
+                      getTag={(sid, c) => {
+                        const entry = r.concept_marks?.[sid]?.[c];
+                        return (typeof entry === "string" ? entry : entry?.status) || "blank";
+                      }}
+                      onSetTag={(sid, c, status) => setConceptStatus(r, c, sid, status)}
+                      onBulkSet={(c, status) => bulkMarkConceptStatus(r, c, status, cls.students.map((s) => s.id))}
+                      extraLabel={(sid, c) => {
+                        const entry = r.concept_marks?.[sid]?.[c];
+                        if (!entry || typeof entry === "string") return null;
+                        if (entry.status === "next_date" && entry.next_date) return `-> ${entry.next_date}`;
+                        if (entry.status === "remark" && entry.remark) return entry.remark;
+                        return null;
+                      }}
+                      onViewHistory={(sid, c) => setHistoryView({ recordId: r.id, studentId: sid, studentName: cls.students.find((s) => s.id === sid)?.name || "", concept: c })}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </div>
-        );
-      })}
+        </div>
+      )}
       {marksImport && (
         <CsvReviewSheet
           title="Import correction marks"
@@ -1089,7 +1119,7 @@ function PerformancePanel({ userId, classes }) {
             <div className="marks-row" key={s.studentId}>
               <span>{s.name}</span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: s.delta >= 0 ? "#2FA88F" : "#E8556B" }}>
-                {s.delta >= 0 ? "+" : ""}{s.delta}% <span style={{ color: "#9c9488", fontWeight: 500 }}>({s.priorAvg}%  ->  {s.latest}%)</span>
+                {s.delta >= 0 ? "+" : ""}{s.delta}% <span style={{ color: "#9c9488", fontWeight: 500 }}>({s.priorAvg}% {"->"} {s.latest}%)</span>
               </span>
             </div>
           ))}
@@ -1334,22 +1364,67 @@ function TimetablePanel({ userId, classes }) {
 
 /* ---------- shell ---------- */
 
-export default function Teach({ userId, classes, reloadClasses }) {
-  const [sub, setSub] = useState("planner");
+const TEACH_SECTIONS = [
+  { value: "planner", label: "Planner", sub: "Chapters, objectives & concepts", icon: ClipboardList, color: "#F2790C" },
+  { value: "attendance", label: "Attendance", sub: "Today's roll call, class by class", icon: ClipboardCheck, color: "#2FA88F" },
+  { value: "correction", label: "Correction", sub: "Classwork & homework check-off", icon: Check, color: "#5B7FDB" },
+  { value: "performance", label: "Scores", sub: "Tests, marks & concept breakdown", icon: BarChart3, color: "#8B7FC7" },
+  { value: "absences", label: "Absences", sub: "Who missed what lesson", icon: UserX, color: "#E8556B" },
+  { value: "timetable", label: "Timetable", sub: "Your weekly class schedule", icon: CalendarClock, color: "#D9A441" },
+  { value: "classes", label: "Classes", sub: "Rosters, students & sections", icon: Users, color: "#4FB3C4" },
+];
+// shown only for the roles that need them
+const SIGNOFF_SECTION = { value: "signoff", label: "Sign-off", sub: "Review lessons waiting on you", icon: ShieldCheck, color: "#D9A441" };
+const ADMIN_SECTION = { value: "admin", label: "School admin", sub: "Structure, people & invites", icon: Building2, color: "#2A2723" };
+
+function TeachHome({ classes, sections, onOpen }) {
+  const studentCount = classes.reduce((sum, c) => sum + c.students.length, 0);
   return (
     <div className="page">
-      <Segmented
-        options={[
-          { value: "planner", label: "Planner", icon: ClipboardList },
-          { value: "attendance", label: "Attendance", icon: ClipboardCheck },
-          { value: "correction", label: "Correction", icon: Check },
-          { value: "performance", label: "Scores", icon: BarChart3 },
-          { value: "absences", label: "Absences", icon: UserX },
-          { value: "timetable", label: "Timetable", icon: CalendarClock },
-          { value: "classes", label: "Classes", icon: Users },
-        ]}
-        value={sub} onChange={setSub}
-      />
+      <h2 className="page-title">Teach</h2>
+      <div className="card home-summary-card">
+        <div className="home-summary-num">{classes.length}</div>
+        <div className="home-summary-label">class{classes.length === 1 ? "" : "es"}</div>
+        <div className="home-summary-divider" />
+        <div className="home-summary-num">{studentCount}</div>
+        <div className="home-summary-label">student{studentCount === 1 ? "" : "s"}</div>
+      </div>
+      <div className="home-list">
+        {sections.map((s) => (
+          <button type="button" key={s.value} className="home-list-item" onClick={() => onOpen(s.value)}>
+            <span className="home-list-icon" style={{ color: s.color, background: `${s.color}17` }}><s.icon size={19} /></span>
+            <span className="home-list-text">
+              <span className="home-list-title">{s.label}</span>
+              <span className="home-list-sub">{s.sub}</span>
+            </span>
+            <ChevronRight size={17} className="home-list-chevron" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function Teach({ userId, classes, reloadClasses, school: mySchool }) {
+  const [sub, setSub] = useState(null);
+  const role = mySchool?.role;
+  const canReview = role === "coordinator" || role === "school_admin" || role === "super_admin";
+  const canAdmin = role === "school_admin" || role === "super_admin";
+
+  const sections = [
+    ...TEACH_SECTIONS,
+    ...(canReview ? [SIGNOFF_SECTION] : []),
+    ...(canAdmin ? [ADMIN_SECTION] : []),
+  ];
+
+  if (!sub) return <TeachHome classes={classes} sections={sections} onOpen={setSub} />;
+
+  const section = sections.find((s) => s.value === sub);
+  return (
+    <div className="page">
+      <button type="button" className="section-back" onClick={() => setSub(null)}>
+        <ChevronLeft size={18} /> <span className="section-back-icon" style={{ color: section.color, background: `${section.color}17` }}><section.icon size={15} /></span> {section.label}
+      </button>
       {sub === "planner" && <PlannerPanel userId={userId} classes={classes} />}
       {sub === "attendance" && <AttendancePanel userId={userId} classes={classes} />}
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} />}
@@ -1357,6 +1432,8 @@ export default function Teach({ userId, classes, reloadClasses }) {
       {sub === "absences" && <AbsencePanel userId={userId} classes={classes} />}
       {sub === "timetable" && <TimetablePanel userId={userId} classes={classes} />}
       {sub === "classes" && <ClassesPanel userId={userId} classes={classes} reloadClasses={reloadClasses} />}
+      {sub === "signoff" && canReview && <SignoffPanel schoolId={mySchool.id} userId={userId} />}
+      {sub === "admin" && canAdmin && <AdminPanel userId={userId} schoolId={mySchool.id} classes={classes} reloadClasses={reloadClasses} />}
     </div>
   );
 }

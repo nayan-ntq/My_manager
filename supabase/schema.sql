@@ -245,3 +245,293 @@ drop policy if exists "performance_owner" on public.performance_records;
 create policy "performance_owner" on public.performance_records for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "import_logs_owner" on public.import_logs;
 create policy "import_logs_owner" on public.import_logs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ================= teacher mode: school scoping =================
+-- Applied live via Supabase migration "teacher_mode_school_scoping".
+-- Every teacher belongs to a school (schools + school_members); classes
+-- carry a school_id, set automatically on insert via a trigger. Roles
+-- school_admin/super_admin are reserved for the admin modes, not yet built.
+-- NOTE: the personal-side tables above (tasks, subtasks, exercises,
+-- exercise_sets, task_categories, user_meta) still exist in the live
+-- database with real historical data, but the app no longer reads or
+-- writes them as of the teacher-mode + home-page update. Not dropped
+-- pending explicit confirmation.
+
+create table if not exists public.schools (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.school_members (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'teacher' check (role in ('teacher','school_admin','super_admin')),
+  created_at timestamptz not null default now(),
+  unique (school_id, user_id)
+);
+create index if not exists school_members_user_idx on public.school_members (user_id);
+create index if not exists schools_created_by_idx on public.schools (created_by);
+
+alter table public.classes add column if not exists school_id uuid references public.schools(id) on delete set null;
+create index if not exists classes_school_idx on public.classes (school_id);
+
+alter table public.schools enable row level security;
+alter table public.school_members enable row level security;
+
+drop policy if exists "schools_select_member_or_creator" on public.schools;
+create policy "schools_select_member_or_creator" on public.schools for select to authenticated
+  using (
+    created_by = (select auth.uid())
+    or exists (select 1 from public.school_members m where m.school_id = schools.id and m.user_id = (select auth.uid()))
+  );
+
+drop policy if exists "schools_insert_own" on public.schools;
+create policy "schools_insert_own" on public.schools for insert to authenticated
+  with check (created_by = (select auth.uid()));
+
+drop policy if exists "school_members_select_own" on public.school_members;
+create policy "school_members_select_own" on public.school_members for select to authenticated
+  using (user_id = (select auth.uid()));
+
+drop policy if exists "school_members_insert_self_teacher" on public.school_members;
+create policy "school_members_insert_self_teacher" on public.school_members for insert to authenticated
+  with check (
+    user_id = (select auth.uid())
+    and role = 'teacher'
+    and exists (select 1 from public.schools s where s.id = school_members.school_id and s.created_by = (select auth.uid()))
+  );
+
+create or replace function public.set_class_school()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.school_id is null then
+    select sm.school_id into new.school_id
+    from public.school_members sm
+    where sm.user_id = new.user_id
+    order by sm.created_at
+    limit 1;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.set_class_school() from public, anon, authenticated;
+
+drop trigger if exists classes_set_school on public.classes;
+create trigger classes_set_school before insert on public.classes
+  for each row execute function public.set_class_school();
+-- School admin mode: freeform hierarchy (divisions), invite-code onboarding,
+-- and department-wise coordinator planner sign-off. Additive only.
+-- ALREADY APPLIED to the live project (migration name: school_admin_mode,
+-- plus one follow-up revoke on guard_planner_reviewer_update's EXECUTE grant).
+
+-- ---------- freeform hierarchy ----------
+create table if not exists public.divisions (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  parent_id uuid references public.divisions(id) on delete cascade,
+  name text not null,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists divisions_school_idx on public.divisions (school_id);
+create index if not exists divisions_parent_idx on public.divisions (parent_id);
+
+alter table public.classes add column if not exists division_id uuid references public.divisions(id) on delete set null;
+create index if not exists classes_division_idx on public.classes (division_id);
+
+alter table public.school_members add column if not exists division_id uuid references public.divisions(id) on delete set null;
+
+alter table public.school_members drop constraint if exists school_members_role_check;
+alter table public.school_members add constraint school_members_role_check
+  check (role in ('teacher','coordinator','school_admin','super_admin'));
+
+alter table public.divisions enable row level security;
+
+drop policy if exists "divisions_select_member" on public.divisions;
+create policy "divisions_select_member" on public.divisions for select to authenticated
+  using (exists (select 1 from public.school_members m where m.school_id = divisions.school_id and m.user_id = (select auth.uid())));
+
+drop policy if exists "divisions_admin_write" on public.divisions;
+create policy "divisions_admin_write" on public.divisions for all to authenticated
+  using (exists (select 1 from public.school_members m where m.school_id = divisions.school_id and m.user_id = (select auth.uid()) and m.role in ('school_admin','super_admin')))
+  with check (exists (select 1 from public.school_members m where m.school_id = divisions.school_id and m.user_id = (select auth.uid()) and m.role in ('school_admin','super_admin')));
+
+drop policy if exists "school_members_select_school_admin" on public.school_members;
+create policy "school_members_select_school_admin" on public.school_members for select to authenticated
+  using (exists (select 1 from public.school_members m2 where m2.school_id = school_members.school_id and m2.user_id = (select auth.uid()) and m2.role in ('school_admin','super_admin')));
+
+drop policy if exists "school_members_admin_manage" on public.school_members;
+create policy "school_members_admin_manage" on public.school_members for update to authenticated
+  using (exists (select 1 from public.school_members m2 where m2.school_id = school_members.school_id and m2.user_id = (select auth.uid()) and m2.role in ('school_admin','super_admin')))
+  with check (exists (select 1 from public.school_members m2 where m2.school_id = school_members.school_id and m2.user_id = (select auth.uid()) and m2.role in ('school_admin','super_admin')));
+drop policy if exists "school_members_admin_remove" on public.school_members;
+create policy "school_members_admin_remove" on public.school_members for delete to authenticated
+  using (exists (select 1 from public.school_members m2 where m2.school_id = school_members.school_id and m2.user_id = (select auth.uid()) and m2.role in ('school_admin','super_admin')));
+
+-- ---------- invite codes (no email service needed: admin shares a short code) ----------
+create table if not exists public.school_invites (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  code text not null unique,
+  role text not null default 'teacher' check (role in ('teacher','coordinator','school_admin')),
+  division_id uuid references public.divisions(id) on delete set null,
+  created_by uuid references auth.users(id) on delete set null,
+  max_uses int not null default 1,
+  uses int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists school_invites_school_idx on public.school_invites (school_id);
+
+alter table public.school_invites enable row level security;
+
+drop policy if exists "school_invites_admin_all" on public.school_invites;
+create policy "school_invites_admin_all" on public.school_invites for all to authenticated
+  using (exists (select 1 from public.school_members m where m.school_id = school_invites.school_id and m.user_id = (select auth.uid()) and m.role in ('school_admin','super_admin')))
+  with check (exists (select 1 from public.school_members m where m.school_id = school_invites.school_id and m.user_id = (select auth.uid()) and m.role in ('school_admin','super_admin')));
+
+create or replace function public.redeem_school_invite(invite_code text)
+returns table (school_id uuid, school_name text, role text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  inv record;
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception 'Not signed in';
+  end if;
+
+  select * into inv from public.school_invites where code = invite_code for update;
+  if inv is null then
+    raise exception 'Invite code not found';
+  end if;
+  if inv.uses >= inv.max_uses then
+    raise exception 'This invite code has already been used';
+  end if;
+  if exists (select 1 from public.school_members sm where sm.school_id = inv.school_id and sm.user_id = uid) then
+    raise exception 'You are already a member of this school';
+  end if;
+
+  insert into public.school_members (school_id, user_id, role, division_id)
+  values (inv.school_id, uid, inv.role, inv.division_id);
+
+  update public.school_invites set uses = uses + 1 where id = inv.id;
+
+  update public.classes set school_id = inv.school_id where user_id = uid and school_id is null;
+
+  return query select s.id, s.name, inv.role from public.schools s where s.id = inv.school_id;
+end;
+$$;
+revoke all on function public.redeem_school_invite(text) from public, anon;
+grant execute on function public.redeem_school_invite(text) to authenticated;
+
+-- ---------- planner sign-off ----------
+alter table public.planner_entries add column if not exists signoff_status text not null default 'none' check (signoff_status in ('none','pending','approved','rejected'));
+alter table public.planner_entries add column if not exists signoff_by uuid references auth.users(id) on delete set null;
+alter table public.planner_entries add column if not exists signoff_at timestamptz;
+alter table public.planner_entries add column if not exists signoff_note text;
+
+drop policy if exists "planner_reviewer_select" on public.planner_entries;
+create policy "planner_reviewer_select" on public.planner_entries for select to authenticated
+  using (
+    exists (
+      select 1 from public.classes c
+      join public.school_members m on m.school_id = c.school_id and m.user_id = (select auth.uid())
+      where c.id = planner_entries.class_id
+        and m.role in ('school_admin','super_admin','coordinator')
+        and (m.role in ('school_admin','super_admin') or m.division_id is null or m.division_id = c.division_id)
+    )
+  );
+
+drop policy if exists "planner_reviewer_update" on public.planner_entries;
+create policy "planner_reviewer_update" on public.planner_entries for update to authenticated
+  using (
+    exists (
+      select 1 from public.classes c
+      join public.school_members m on m.school_id = c.school_id and m.user_id = (select auth.uid())
+      where c.id = planner_entries.class_id
+        and m.role in ('school_admin','super_admin','coordinator')
+        and (m.role in ('school_admin','super_admin') or m.division_id is null or m.division_id = c.division_id)
+    )
+  )
+  with check (true);
+
+create or replace function public.guard_planner_reviewer_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.user_id = old.user_id and new.user_id = auth.uid() then
+    return new;
+  end if;
+  if new.class_id is distinct from old.class_id or new.date is distinct from old.date
+     or new.chapter_number is distinct from old.chapter_number or new.chapter is distinct from old.chapter
+     or new.objectives is distinct from old.objectives or new.methodology is distinct from old.methodology
+     or new.resources is distinct from old.resources or new.assignment is distinct from old.assignment
+     or new.reflection is distinct from old.reflection or new.concepts is distinct from old.concepts
+     or new.exercise_list is distinct from old.exercise_list or new.photos is distinct from old.photos
+     or new.user_id is distinct from old.user_id then
+    raise exception 'Reviewers may only change sign-off status';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.guard_planner_reviewer_update() from public, anon, authenticated;
+drop trigger if exists planner_guard_reviewer_update on public.planner_entries;
+create trigger planner_guard_reviewer_update before update on public.planner_entries
+  for each row execute function public.guard_planner_reviewer_update();
+
+-- ---------- profiles (for the admin roster: Supabase doesn't expose auth.users to the client) ----------
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email) values (new.id, new.email)
+  on conflict (id) do update set email = excluded.email;
+  return new;
+end;
+$$;
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert or update of email on auth.users
+  for each row execute function public.handle_new_user();
+
+insert into public.profiles (id, email)
+select id, email from auth.users
+on conflict (id) do update set email = excluded.email;
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "profiles_self" on public.profiles;
+create policy "profiles_self" on public.profiles for select to authenticated
+  using (id = (select auth.uid()));
+
+drop policy if exists "profiles_school_member" on public.profiles;
+create policy "profiles_school_member" on public.profiles for select to authenticated
+  using (
+    exists (
+      select 1 from public.school_members m1
+      join public.school_members m2 on m2.school_id = m1.school_id
+      where m1.user_id = (select auth.uid()) and m2.user_id = profiles.id
+    )
+  );
