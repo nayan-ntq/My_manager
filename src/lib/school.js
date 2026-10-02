@@ -11,14 +11,26 @@ import { supabase } from "./supabaseClient";
 export async function fetchMySchool(userId) {
   const { data, error } = await supabase
     .from("school_members")
-    .select("role, division_id, schools(id, name)")
+    .select("role, division_id, schools(id, name, correction_types, test_types)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) throw error;
   if (!data?.schools) return null;
-  return { id: data.schools.id, name: data.schools.name, role: data.role, divisionId: data.division_id };
+  return {
+    id: data.schools.id, name: data.schools.name, role: data.role, divisionId: data.division_id,
+    correctionTypes: data.schools.correction_types || [], testTypes: data.schools.test_types || [],
+  };
+}
+
+/** Updates the school's uniform preset lists (correction type / exam type) - any member can edit these. */
+export async function updateSchoolTypeLists(schoolId, patch) {
+  const dbPatch = {};
+  if (patch.correctionTypes) dbPatch.correction_types = patch.correctionTypes;
+  if (patch.testTypes) dbPatch.test_types = patch.testTypes;
+  const { error } = await supabase.from("schools").update(dbPatch).eq("id", schoolId);
+  if (error) throw error;
 }
 
 /**
@@ -42,7 +54,10 @@ export async function createSchoolAndJoin(userId, name) {
     .from("classes").update({ school_id: school.id }).eq("user_id", userId).is("school_id", null);
   if (classErr) throw classErr;
 
-  return { id: school.id, name: school.name, role: "school_admin", divisionId: null };
+  return {
+    id: school.id, name: school.name, role: "school_admin", divisionId: null,
+    correctionTypes: school.correction_types || [], testTypes: school.test_types || [],
+  };
 }
 
 /** Joins an existing school with an invite code from its admin. */

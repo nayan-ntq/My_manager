@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { createSchoolAndJoin, redeemInvite } from "../lib/school";
+import { createSchoolAndJoin, redeemInvite, fetchMySchool } from "../lib/school";
 import * as db from "../lib/db";
 
 export default function SchoolSetup({ userId, onDone }) {
@@ -13,8 +13,12 @@ export default function SchoolSetup({ userId, onDone }) {
     e.preventDefault();
     setError(null); setLoading(true);
     try {
-      const school = mode === "create" ? await createSchoolAndJoin(userId, name) : await redeemInvite(code);
-      onDone(school);
+      if (mode === "create") {
+        onDone(await createSchoolAndJoin(userId, name));
+      } else {
+        await redeemInvite(code);
+        onDone(await fetchMySchool(userId)); // re-fetch so joined-via-code users also get the school's preset type lists
+      }
     } catch (err) {
       setError(err.message || "Couldn't save your school");
       setLoading(false);

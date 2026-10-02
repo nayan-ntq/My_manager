@@ -14,9 +14,13 @@ day or a whole week/multiple dates (e.g. a weekly planner table with a row or co
 EVERY distinct lesson/date you can find as JSON with this exact shape:
 {"entries": [{"date": "YYYY-MM-DD"|null, "chapter_number": string|null, "chapter": string|null,
 "objectives": string|null, "methodology": string|null, "resources": string|null, "assignment": string|null,
-"reflection": string|null, "concepts": string[], "exercise_list": string[]}]}.
-concepts and exercise_list should be short items split out from the methodology/assignment text (e.g.
-individual topic names, "Ex 3.1"). For "date": if the page shows an actual date, use it. If it only shows
+"reflection": string|null,
+"classwork_items": [{"text": string, "important": boolean}],
+"homework_items": [{"text": string, "important": boolean}]}]}.
+classwork_items are short individual question numbers or concept names split out of the Methodology text
+(e.g. "Ex 3.1 Q1-4", "Equivalent fractions"); homework_items are the same, split out of the Assignment
+text. Set "important" true only if the page itself marks/underlines/stars that item as important -
+otherwise false, never guess. For "date": if the page shows an actual date, use it. If it only shows
 a day name (Monday, Tuesday...), compute the real date using today = ${ctx?.today || "unknown"} (a
 ${ctx?.todayDow || ""}) and resolve it to the nearest upcoming or matching occurrence of that weekday. If
 no date or day is determinable at all, use null. Use null for any other field you can't read confidently

@@ -30,8 +30,8 @@ export async function fetchClasses(userId) {
   if (error) throw error;
   return (data || []).map((c) => ({ ...c, students: (c.students || []).sort((a, b) => a.position - b.position) }));
 }
-export async function createClass(userId, name, subject) {
-  const { data, error } = await supabase.from("classes").insert({ user_id: userId, name, subject }).select().single();
+export async function createClass(userId, name, subject, grade) {
+  const { data, error } = await supabase.from("classes").insert({ user_id: userId, name, subject, grade: grade || null }).select().single();
   if (error) throw error;
   return { ...data, students: [] };
 }
@@ -123,7 +123,7 @@ export async function updatePlannerEntry(id, patch) {
 export async function fetchChapterNameForNumber(userId, classId, chapterNumber) {
   if (!chapterNumber?.trim()) return null;
   const { data, error } = await supabase.from("planner_entries")
-    .select("chapter, concepts, exercise_list, methodology, assignment").eq("user_id", userId).eq("class_id", classId)
+    .select("chapter, concepts, exercise_list, methodology, assignment, classwork_items, homework_items").eq("user_id", userId).eq("class_id", classId)
     .eq("chapter_number", chapterNumber.trim()).order("date", { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
   return data;
@@ -173,14 +173,29 @@ export async function fetchPlannerChapterMap(userId, classId) {
  *  are tracked identically (same understanding/accuracy tags). Used to auto-fill test/correction
  *  concept lists when none are given explicitly. */
 export async function fetchPlannerChapters(userId, classId) {
-  const { data, error } = await supabase.from("planner_entries").select("concepts, exercise_list").eq("user_id", userId).eq("class_id", classId);
+  const { data, error } = await supabase.from("planner_entries").select("concepts, exercise_list, classwork_items, homework_items").eq("user_id", userId).eq("class_id", classId);
   if (error) throw error;
   const seen = new Set();
   for (const row of data || []) {
     for (const c of row.concepts || []) if (c?.trim()) seen.add(c.trim());
     for (const e of row.exercise_list || []) if (e?.trim()) seen.add(e.trim());
+    for (const item of [...(row.classwork_items || []), ...(row.homework_items || [])]) if (item?.text?.trim()) seen.add(item.text.trim());
   }
   return [...seen];
+}
+/** Every classwork/homework item logged for a class, flattened with its date/chapter - for the
+ *  Classwork & Homework browsing list (date-wise / chapter-wise filterable). */
+export async function fetchClassworkHomework(userId, classId) {
+  const { data, error } = await supabase.from("planner_entries")
+    .select("date, chapter_number, chapter, classwork_items, homework_items")
+    .eq("user_id", userId).eq("class_id", classId).order("date", { ascending: false });
+  if (error) throw error;
+  const rows = [];
+  for (const entry of data || []) {
+    for (const item of entry.classwork_items || []) rows.push({ ...item, type: "classwork", date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter });
+    for (const item of entry.homework_items || []) rows.push({ ...item, type: "homework", date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter });
+  }
+  return rows;
 }
 /** Absences cross-referenced with the concept/chapter taught that day. */
 export async function fetchAbsenceConceptReport(userId, classId, studentsById) {

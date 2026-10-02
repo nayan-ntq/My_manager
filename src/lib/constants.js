@@ -1,4 +1,11 @@
 export const DEFAULT_TEST_TYPES = ["CT", "IA-1", "IA-2", "Term"];
+
+// medium a classwork/homework item was done in - purely descriptive, shown as a small tag
+export const MEDIUM_OPTIONS = [
+  { value: "folder", label: "Folder" },
+  { value: "book", label: "Book" },
+  { value: "notebook", label: "Notebook" },
+];
 export const CORRECTION_CODES = ["blank", "done", "ab", "ic", "ns"];
 // icon-based marks (safer + crisper than unicode glyphs, which can render as tofu boxes on some devices)
 export const CORRECTION_MARKS = { blank: { icon: "minus" }, done: { icon: "check" }, ab: { text: "AB" }, ic: { text: "IC" }, ns: { text: "NS" } };
