@@ -1,0 +1,359 @@
+# My Manager
+
+Personal task/health/growth planner merged with a full teaching assistant:
+class planner, attendance, correction records, performance/gradebook, and an
+AI coach — all with real accounts and a shared Postgres backend (Supabase).
+
+## What's already done for you
+- Supabase project is live with the full schema and Row Level Security applied
+- The Supabase URL + publishable key are already hardcoded in
+  `src/lib/supabaseClient.js` — safe to expose, protected by RLS, no setup needed
+- Icons, PWA manifest, and branding are in place
+
+## What you still need to do
+
+### 1. Push this to GitHub
+Unzip this folder, upload its contents to a new GitHub repo (drag-and-drop via
+GitHub's web UI works fine — see the "uploading an existing file" link on a
+fresh empty repo).
+
+### 2. Import into Vercel
+Go to vercel.com/new, import the repo. Vercel auto-detects Vite — no config
+changes needed.
+
+### 3. Add ONE environment variable (for the AI Coach)
+In Vercel → Project Settings → Environment Variables, add either or both:
+- `ANTHROPIC_API_KEY` — console.anthropic.com (~$5 free trial credit)
+- `GEMINI_API_KEY` — aistudio.google.com/apikey (ongoing free tier, no card)
+
+Optionally `AI_PROVIDER` = `anthropic` or `gemini` to pick which runs first.
+This is the only manual step left — I have no way to set Vercel env vars
+through my current access, so this one's on you.
+
+### 4. Deploy
+Click Deploy. You'll get a live URL. Sign up for an account in the app itself
+(top of the Auth screen) — that's separate from your Supabase/Vercel logins.
+
+## Project structure
+```
+├── api/coach.js              AI coach serverless function (Anthropic/Gemini, auto-fallback)
+├── public/                    Icons + PWA manifest assets
+├── src/
+│   ├── lib/
+│   │   ├── supabaseClient.js   Supabase connection (credentials already filled in)
+│   │   ├── db.js               All reads/writes: auth, tasks, classes, planner, attendance, etc.
+│   │   ├── schedule.js         Live task-rescheduling engine
+│   │   ├── images.js           Client-side photo compression
+│   │   └── constants.js        Categories, seed data
+│   ├── components/             TaskCard, AddTaskSheet, PhotoStrip, DateStrip, BottomNav
+│   ├── pages/                  Auth, Today, Teach (5 sub-panels), Insights, Coach
+│   └── App.jsx
+└── vite.config.js              Includes PWA plugin for phone install
+```
+
+## Custom domain
+Works with zero code changes — add it under Vercel → Domains, point your
+registrar's DNS at it, SSL is automatic.
+
+## Recent update: attendance day-off + concept-based test scoring
+
+- **Attendance** now defaults every student to present; you only tap to mark
+  exceptions absent. A "Day off" switch skips attendance entirely for a date.
+- **Test creation** now asks for number of chapters and (optionally) exercises
+  and specific concepts. Leave concepts blank and it auto-pulls every chapter
+  logged in that class's Planner.
+- Each test now has an expandable **concept breakdown** grid — tap a cell to
+  cycle a student through Accurate / Application gap / Silly mistake / Concept
+  gap, per concept.
+- New **Absences** tab cross-references who was absent on which date with
+  whatever chapter was logged in the Planner for that date.
+
+This required one additional Supabase migration (already applied to your live
+project): `attendance_records.is_day_off`, and
+`performance_records.concepts` / `concept_marks` / `chapter_count` / `exercises`.
+If you ever recreate the Supabase project from scratch, re-run
+`supabase/schema.sql` first, then this migration is baked into the schema
+already if you're copying it fresh — no separate step needed there.
+
+## Recent update: chapter linking, concept tracing, incomplete-task follow-up
+
+- **Planner** — chapter number and chapter name are now separate fields.
+  Type a chapter number you've used before and the name (plus concepts/
+  exercises, if you don't overwrite them) auto-fills from your last entry
+  for that number.
+- **Concepts & exercises** are now captured explicitly in the Planner per
+  lesson, and can be linked into **Correction records** by entering the same
+  chapter number \u2014 it pulls in that lesson's concepts/exercises automatically.
+- **Correction type** is now a free-text field with a dropdown built from
+  every type you've used before (starts with Classwork/Homework/Worksheet/
+  Textbook/Revision, but anything new you type joins the list from then on).
+- **Incomplete tasks** \u2014 a new expandable section at the top of the
+  Correction tab lists every student currently marked "ic" (incomplete)
+  across that class, with a one-tap "Done" button once they finish it.
+
+Database migration for this is already applied to your live Supabase project
+and included in `supabase/schema.sql` for a fresh setup.
+
+## Recent update: concept-level understanding, test statistics, full-data Coach
+
+- **Correction records** now have a per-student, per-concept "understanding"
+  grid (Understood / Not understood / Not done), alongside the existing
+  overall done/absent/incomplete/not-submitted status. A new **"ns" (not
+  submitted)** status was added to that cycle.
+- **Concept suggestions** \u2014 when creating a correction record, enter the
+  chapter number and it suggests concepts pulled from that lesson's
+  Methodology (for Classwork-type entries) or Assignment (for Homework-type)
+  as tappable chips.
+- **Test records** now ask for **passing marks**, support marking a student
+  **Absent** (excluded from all statistics), and show **mean, median, mode,
+  and standard deviation** alongside pass/fail counts.
+- **Improving / slipping students** \u2014 a new card compares each student's
+  most recent test % against their average on earlier tests for that class.
+- **Coach now has full app access** \u2014 every class's roster, planner
+  chapters/concepts, attendance rate, correction completion, and test
+  statistics are sent as a single snapshot at the start of each conversation,
+  not just a trimmed personal summary.
+- **AI model updated to Gemini 3.6 Flash** (`gemini-3.6-flash`) as the
+  default when `AI_PROVIDER=gemini` or as fallback. Override anytime via the
+  `GEMINI_MODEL` environment variable in Vercel.
+
+This required one more Supabase migration (already applied to your live
+project) and is included in `supabase/schema.sql` for a fresh setup.
+
+## Recent update: polish pass - friendlier and more beautiful
+
+- **Fixed garbled characters** - a few unicode symbols (dashes, arrows, checkmarks)
+  could render as broken "tofu" boxes or stray codes on some devices/fonts.
+  All status/understanding/concept marks now render as crisp icons instead
+  of text glyphs, and all other unicode punctuation was swapped for plain
+  ASCII across the app.
+- **Loading states** now show a smooth branded spinner instead of bare
+  "Loading..." text, on the initial app load, Today, and Insights.
+- **Toast confirmations** - a small notification now confirms actions like
+  adding/deleting a task, saving a planner entry, creating a correction or
+  test record, and marking a task done.
+- **Safer deletes** - every delete button (tasks, classes, students, planner
+  entries, correction/test records) now requires a second tap within a few
+  seconds to confirm, instead of deleting instantly on one tap.
+- **Simpler forms** - the "New correction record" and "New test record"
+  forms now show only the essential fields up front (title, type/test type,
+  date, max marks), with chapter linking, concepts, passing marks, etc.
+  tucked behind a "More details" toggle.
+- General visual polish: smoother transitions on cards/buttons/grid cells,
+  richer empty states, refined touch feedback throughout.
+
+No database changes in this update - purely front-end.
+
+## Recent update: editable categories/types, bulk marking, student details, deeper Coach access
+
+- **Task categories are now fully editable** \u2014 tap the gear icon next to
+  the date strip on Today to add, rename, recolor, or delete categories.
+  No longer limited to the original 5.
+- **Test types are free-text with a growing dropdown**, same pattern as
+  correction types.
+- **Bulk "mark all" actions** on every grid (correction status, concept
+  understanding, performance concept breakdown) \u2014 mark the whole class at
+  once, then tap individual cells only for exceptions. This replaces the old
+  one-tap-per-student-per-cell flow.
+- **Student records now support roll number, contact, and notes**, and are
+  editable \u2014 tap any student chip in the Classes tab to open an edit sheet
+  (rename, update details, or delete).
+- **Coach now has full concept-level access** \u2014 per-student marks and
+  per-concept understanding/accuracy breakdowns for the last 15 records per
+  class are included in its data snapshot, not just summary counts. It can
+  now answer things like "which concepts is this student weak on" with real
+  evidence.
+
+## Still in progress (from the same request, not yet built)
+
+The following were part of the same ask but are large enough to need their
+own build pass \u2014 flagging here so nothing gets lost:
+- Gemini-vision planner-photo import, matched against a weekly timetable
+  (the `timetable_slots` and `import_logs` tables are already in the schema
+  for this)
+- Photo \u2192 Gemini \u2192 CSV \u2192 direct database import pipeline
+- Workout plan / timetable import for other people, plus AI-suggested
+  schedule optimization
+- Meal-timing suggestions tied to gym schedule
+- Notification reminders for upcoming tasks
+
+Database changes for this update are already applied to your live Supabase
+project and included in `supabase/schema.sql`.
+
+## Recent update: real branding + photo-import features
+
+### Branding
+Your actual gyanayan icon mark now replaces the placeholder "M" badge
+everywhere: app icon, favicon (browser tab), Apple touch icon (iOS home
+screen), PWA install icon (all sizes, including a properly padded maskable
+version for Android), and the in-app header/login screen. "My Manager"
+remains the app's display name throughout.
+
+### Photo-import features (Gemini vision)
+These all use the same `GEMINI_API_KEY` already documented above \u2014 no
+extra setup needed if that's already set:
+- **Weekly Timetable** (new tab in Teach) \u2014 add slots manually or import a
+  photo of your physical timetable
+- **Planner** \u2014 "Import from photo" pre-fills chapter number/name,
+  objectives, methodology, assignment, concepts, and exercises from a photo
+  of a planner page, for you to review before saving
+- **Classes** \u2014 "Import roster from photo" turns a class list photo into
+  students, via an editable CSV preview
+- **Correction** and **Scores** \u2014 "Import from photo" / "Import marks from
+  photo" reads a completion register or marks sheet, matches names against
+  the real roster, and shows a CSV preview before writing anything
+- Every import is logged to `import_logs` for an audit trail
+
+No imports write to the database automatically \u2014 you always see and can
+edit the extracted data first.
+
+## Still in progress
+
+- Workout plan photo import + AI schedule optimization across personal
+  timetable and workouts
+- Meal-timing suggestions tied to gym schedule
+- Notification reminders for upcoming tasks
+
+## Recent update: multi-image import, multi-date planner sync to Today
+
+- **Multi-image import** \u2014 every "Import from photo" button now lets you
+  select multiple photos at once (up to 8). Useful for a multi-page planner,
+  or a correction/marks sheet that spans more than one page \u2014 Gemini reads
+  them together as one request.
+- **Multi-date planner import** \u2014 if your photo(s) show a whole week (or
+  any set of multiple dates/lessons), Gemini now extracts every lesson it
+  finds, each with its own date, and shows them all in a review list before
+  anything saves. Relative day names ("Monday", "Tuesday"...) are resolved
+  against today's actual date.
+- **Planner imports now sync to Today** \u2014 each imported (or now, any
+  future enhancement to manually-created) lesson automatically creates a
+  matching "Teach {class}: {chapter}" task on the personal Today page for
+  that date, timed to your Timetable slot for that class if one exists.
+
+## Recent update: edit everything
+
+Every saved record can now be edited after the fact, not just deleted:
+- **Classes** \u2014 tap the class name/subject to rename or change subject
+- **Timetable slots** \u2014 tap a slot to change its day, class, time, or label
+- **Correction records** \u2014 tap the record title to edit title, type, date,
+  chapter number, or the concepts/questions it covers
+- **Test records** \u2014 tap the record title to edit title, test type, max
+  marks, passing marks, chapter count, exercises, or concepts covered
+- **Planner entries** \u2014 tap an entry to edit every field, including photos
+
+(Students, tasks, and categories already had edit options from earlier
+updates.) No database changes in this update \u2014 pure front-end plus five
+small new update functions in the data layer.
+
+## Recent update: animations + photo library access
+
+- **Photo library access fixed** \u2014 every "Import from photo" button was
+  forcing the camera open directly (a `capture="environment"` attribute
+  that most mobile browsers treat as camera-only). Removed it, so tapping
+  any import button now shows the normal picker with Photo Library, Take
+  Photo, and Files as options, everywhere in the app.
+- **Animated logo while loading** \u2014 the loading spinner is now the actual
+  app icon with a soft pulse, orbited by a spinning brand-colored ring,
+  instead of a generic ring.
+- **Tab switches** fade/slide in gently instead of snapping.
+- **Task cards** stagger in on load, and pulse with a soft green glow the
+  moment you mark one done.
+- **Streak flame** flickers subtly while your streak is active.
+- **Bottom nav** shows a small dot under the active tab.
+- The **level progress bar** has a subtle shimmer sweep.
+- The **+ (add task) button** pops in on load instead of appearing instantly.
+
+No database changes \u2014 pure front-end.
+
+## Recent update: school admin mode
+
+- **Freeform hierarchy.** From School admin (a new home-page section,
+  visible only to admins), build your school's structure however it
+  actually works — e.g. Lower Secondary, then Math/Bio/English under it,
+  then class and section — as many levels deep as you want. Classes can
+  be assigned to any spot in it.
+- **Roles**: teacher, coordinator, school admin, super admin (the last is
+  reserved for the not-yet-built multi-school super-admin mode). The
+  teacher who creates a school becomes its admin automatically.
+- **Invite codes** replace email invites (no email service is set up) —
+  an admin generates a short code for a role (optionally scoped to one
+  part of the hierarchy, for coordinators), and the person joining enters
+  it from the new "Join with a code" option on first login.
+- **Planner sign-off.** A teacher can submit a planner entry for review;
+  it shows a status badge (Awaiting sign-off / Approved / Sent back).
+  Coordinators and admins get a "Sign-off" home-page section listing
+  everything waiting on them, scoped to their assigned part of the
+  hierarchy (or the whole school for admins), with approve / send-back
+  (with an optional note).
+- New tables: `divisions` (the hierarchy), `school_invites`, `profiles`
+  (a small email mirror of `auth.users`, since Supabase doesn't expose
+  that table to the client — needed to show names in the People tab).
+  `school_members` gained a `division_id` (scopes a coordinator) and the
+  `coordinator` role. `planner_entries` gained `signoff_status`,
+  `signoff_by`, `signoff_at`, `signoff_note`. A database trigger stops a
+  reviewer from editing anything on a planner entry except the sign-off
+  fields, even though they can now see and update entries outside the
+  ones they wrote.
+
+## Recent update: teacher mode (personal planner removed) + home page redesign
+
+- **Personal side removed from the app.** The Today tab, points/streak,
+  workout logger, and user-editable task categories are gone from the UI.
+  The app now opens straight into teaching. (The underlying database
+  tables for these — tasks, subtasks, exercises, exercise_sets,
+  task_categories, user_meta — still exist with your real historical
+  data; they were left alone, just unused, pending confirmation to drop
+  them.)
+- **Teachers now belong to a school.** First login after this update asks
+  for your school's name (one-time), creates it, and attaches your
+  existing classes to it. New classes join automatically. This is the
+  foundation for the upcoming school-admin and super-admin modes
+  (inviting teachers, managing divisions). New tables: `schools`,
+  `school_members`; `classes.school_id` added.
+- **New home page.** Teach now opens on a friendly list of sections
+  (Planner, Attendance, Correction, Scores, Absences, Timetable, Classes)
+  with icons and short descriptions, plus a small classes/students
+  summary card, replacing the old segmented tab bar. Tapping a section
+  opens it with a back button; the sections themselves are unchanged.
+- **Coach** now only receives teaching data (no personal tasks/streak),
+  and its system prompt was updated to match.
+- **Insights** now shows only teaching stats (classes, students,
+  attendance, avg test score, a 7-day attendance chart) and no longer
+  double-counts partial-absence days toward the attendance percentage.
+
+No new photo-import, correction-status, or Coach-reminder features in
+this update — those are still on the list from the planner/correction
+redesign notes.
+
+## Recent update: correction record concept tracking overhaul + punctuality history
+
+- **New per-concept status options** for Correction records' concept breakdown
+  (replacing understood/not-understood/not-done): Done, Not submitted, Absent,
+  Incomplete, **Next date** (prompts for a new date), and **Remark** (prompts
+  for free text). Same options for both Classwork (sourced from the Planner's
+  Methodology) and Homework (sourced from Assignment).
+- **Nothing is ever overwritten silently** \u2014 every status change, for every
+  student on every concept (and on the overall record status), is appended to
+  a new `correction_status_log` table rather than replacing the old value.
+  Tap the history icon (in Student view) to see the full timeline of changes
+  for that student on that concept \u2014 this is what lets you spot which
+  students are punctual vs. chronically delayed.
+- The "Category" field you're marking Classwork/Homework/etc under is the
+  existing free-text Type field with its growing dropdown - no separate
+  new field was needed there, it already worked this way.
+
+Database changes for this are already applied to your live Supabase project.
+`supabase/schema.sql` was also regenerated directly from the live database
+structure in this update, so it's an accurate, complete snapshot for a fresh
+setup - not just an append of recent changes.
+
+## Recent update: register-style correction table
+
+Correction tab now leads with one continuous table matching the physical
+correction book: students down the side (sticky), every correction record as
+its own scrollable column, tap a cell to cycle status. Records with tracked
+topics get a small dot on the cell - tap it to flag exactly which topics are
+incomplete for that student in a single-tap-per-topic list, without leaving
+the table. Tap a column header for full details (concept table, edit, photo
+import, delete). No database changes - reuses everything from the prior
+concept-tracking + history update.
