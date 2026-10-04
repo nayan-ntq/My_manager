@@ -58,6 +58,35 @@ export async function removeStudent(id) {
   if (error) throw error;
 }
 
+/* ---------- teaching: syllabus (per-grade, shared across sections) ---------- */
+
+export async function fetchSyllabus(schoolId, grade) {
+  const { data, error } = await supabase.from("syllabus_chapters").select("*")
+    .eq("school_id", schoolId).eq("grade", grade).order("position");
+  if (error) throw error;
+  return data || [];
+}
+export async function createSyllabusChapter(schoolId, userId, grade, form, position) {
+  const { data, error } = await supabase.from("syllabus_chapters")
+    .insert({ school_id: schoolId, created_by: userId, grade, chapter_number: form.chapter_number || null, chapter_name: form.chapter_name, kind: form.kind || "syllabus", position })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+export async function bulkCreateSyllabusChapters(schoolId, userId, grade, rows, startPosition) {
+  const payload = rows.map((r, i) => ({ school_id: schoolId, created_by: userId, grade, chapter_number: r.chapter_number || null, chapter_name: r.chapter_name, kind: "syllabus", position: startPosition + i }));
+  const { error } = await supabase.from("syllabus_chapters").insert(payload);
+  if (error) throw error;
+}
+export async function updateSyllabusChapter(id, patch) {
+  const { error } = await supabase.from("syllabus_chapters").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function deleteSyllabusChapter(id) {
+  const { error } = await supabase.from("syllabus_chapters").delete().eq("id", id);
+  if (error) throw error;
+}
+
 /* ---------- teaching: weekly timetable ---------- */
 
 export async function fetchTimetable(userId) {

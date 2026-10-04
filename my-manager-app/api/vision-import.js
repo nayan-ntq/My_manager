@@ -10,13 +10,20 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 const PROMPTS = {
   planner: (ctx) => `Read these photo(s) of one or more lesson planner pages - they may cover a single
-day or a whole week/multiple dates (e.g. a weekly planner table with a row or column per day). Extract
-EVERY distinct lesson/date you can find as JSON with this exact shape:
-{"entries": [{"date": "YYYY-MM-DD"|null, "chapter_number": string|null, "chapter": string|null,
-"objectives": string|null, "methodology": string|null, "resources": string|null, "assignment": string|null,
-"reflection": string|null,
+day or a whole week/multiple dates (e.g. a weekly planner table with a row or column per day), AND they
+may cover MORE THAN ONE class/section on the same page or across the photos (e.g. a teacher plans 6A,
+6B and 6C in the same notebook, as separate rows, columns, or clearly labeled blocks). Extract EVERY
+distinct lesson as its own entry - one entry per (date, class/section) combination, never merging two
+different sections' plans into one entry even if they're for the same date and chapter. Return JSON with
+this exact shape:
+{"entries": [{"date": "YYYY-MM-DD"|null, "class_label": string|null, "chapter_number": string|null,
+"chapter": string|null, "objectives": string|null, "methodology": string|null, "resources": string|null,
+"assignment": string|null, "reflection": string|null,
 "classwork_items": [{"text": string, "important": boolean}],
 "homework_items": [{"text": string, "important": boolean}]}]}.
+"class_label" is the exact section/class name as written on the page for that entry (e.g. "6A", "7B",
+"Grade 6 - B") - use null only if the page genuinely shows just one undivided class/section throughout.
+${ctx?.allClassNames?.length ? `This teacher's known classes are: ${JSON.stringify(ctx.allClassNames)} - if a row's label clearly matches one of these (even abbreviated or reordered), use that exact known name as class_label.` : ""}
 classwork_items are short individual question numbers or concept names split out of the Methodology text
 (e.g. "Ex 3.1 Q1-4", "Equivalent fractions"); homework_items are the same, split out of the Assignment
 text. Set "important" true only if the page itself marks/underlines/stars that item as important -
@@ -24,9 +31,9 @@ otherwise false, never guess. For "date": if the page shows an actual date, use 
 a day name (Monday, Tuesday...), compute the real date using today = ${ctx?.today || "unknown"} (a
 ${ctx?.todayDow || ""}) and resolve it to the nearest upcoming or matching occurrence of that weekday. If
 no date or day is determinable at all, use null. Use null for any other field you can't read confidently
-- never invent content. If the photo(s) show only a single lesson, return an "entries" array with just
-one item. Return ONLY the JSON object, no other text.
-${ctx?.classHint ? `Context: this is for class "${ctx.classHint}".` : ""}`,
+- never invent content. If the photo(s) show only a single lesson for a single class, return an "entries"
+array with just one item. Return ONLY the JSON object, no other text.
+${ctx?.classHint ? `Context: if class_label can't be determined for an entry, assume it's for "${ctx.classHint}".` : ""}`,
 
   roster: () => `Read this photo of a student roster/list. Extract every student as CSV with header
 "name,roll_no" - one row per student, roll_no blank if not shown. Preserve names exactly as written
@@ -47,6 +54,11 @@ Return ONLY the CSV text, no commentary, no markdown code fences.`,
   workout: () => `Read this photo or description of a workout plan. Extract as JSON with this exact shape:
 {"exercises": [{"name": string, "sets": [{"reps": number|null, "weight": number|null}]}]}. If specific
 numbers aren't visible, use null rather than guessing. Return ONLY the JSON object, no other text.`,
+
+  syllabus: () => `Read this photo of a syllabus or table-of-contents page listing chapters/units for a
+grade. Extract every chapter as CSV with header "chapter_number,chapter_name" - one row per chapter, in
+the order they appear on the page. Preserve names exactly as written (fix obvious OCR errors only, don't
+invent chapters). Return ONLY the CSV text, no commentary, no markdown code fences.`,
 
   timetable: () => `Read this photo of a weekly class timetable. Extract as CSV with header
 "day_of_week,start_time,end_time,class_name,label" where day_of_week is 0-6 (0=Sunday) and times are in

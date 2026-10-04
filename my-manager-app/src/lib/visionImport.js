@@ -42,6 +42,19 @@ export function parseCSV(text) {
   return { headers, rows };
 }
 
+/** Fuzzy-matches an OCR'd section/class label (e.g. "6 A", "Grade 6-B") against the teacher's
+ *  actual classes - strips spaces/punctuation so "6A" matches "6 - A" etc. Returns the class or null. */
+export function matchClassName(label, classes) {
+  if (!label) return null;
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const target = norm(label);
+  if (!target) return null;
+  let match = classes.find((c) => norm(c.name) === target);
+  if (match) return match;
+  match = classes.find((c) => norm(c.name).includes(target) || target.includes(norm(c.name)));
+  return match || null;
+}
+
 /** Fuzzy-matches an OCR'd name against a known roster (case-insensitive, tolerant of extra whitespace). */
 export function matchStudentName(name, students) {
   const norm = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
