@@ -60,21 +60,22 @@ export async function removeStudent(id) {
 
 /* ---------- teaching: syllabus (per-grade, shared across sections) ---------- */
 
-export async function fetchSyllabus(schoolId, grade) {
-  const { data, error } = await supabase.from("syllabus_chapters").select("*")
-    .eq("school_id", schoolId).eq("grade", grade).order("position");
+export async function fetchSyllabus(schoolId, grade, subject) {
+  let query = supabase.from("syllabus_chapters").select("*").eq("school_id", schoolId).eq("grade", grade).order("position");
+  if (subject) query = query.eq("subject", subject);
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
-export async function createSyllabusChapter(schoolId, userId, grade, form, position) {
+export async function createSyllabusChapter(schoolId, userId, grade, subject, form, position) {
   const { data, error } = await supabase.from("syllabus_chapters")
-    .insert({ school_id: schoolId, created_by: userId, grade, chapter_number: form.chapter_number || null, chapter_name: form.chapter_name, kind: form.kind || "syllabus", position })
+    .insert({ school_id: schoolId, created_by: userId, grade, subject, chapter_number: form.chapter_number || null, chapter_name: form.chapter_name, kind: form.kind || "syllabus", position })
     .select().single();
   if (error) throw error;
   return data;
 }
-export async function bulkCreateSyllabusChapters(schoolId, userId, grade, rows, startPosition) {
-  const payload = rows.map((r, i) => ({ school_id: schoolId, created_by: userId, grade, chapter_number: r.chapter_number || null, chapter_name: r.chapter_name, kind: "syllabus", position: startPosition + i }));
+export async function bulkCreateSyllabusChapters(schoolId, userId, grade, subject, rows, startPosition) {
+  const payload = rows.map((r, i) => ({ school_id: schoolId, created_by: userId, grade, subject, chapter_number: r.chapter_number || null, chapter_name: r.chapter_name, kind: "syllabus", position: startPosition + i }));
   const { error } = await supabase.from("syllabus_chapters").insert(payload);
   if (error) throw error;
 }

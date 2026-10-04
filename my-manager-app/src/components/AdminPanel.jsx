@@ -163,6 +163,8 @@ function RosterTab({ schoolId, divisions }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [editingNameFor, setEditingNameFor] = useState(null); // user_id
+  const [nameInput, setNameInput] = useState("");
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null);
     try { setMembers(await school.fetchSchoolMembers(schoolId)); }
@@ -182,6 +184,12 @@ function RosterTab({ schoolId, divisions }) {
     toast("Updated");
   };
   const remove = async (m) => { await school.removeMember(m.id); load(); toast("Removed from school"); };
+  const startEditName = (m) => { setEditingNameFor(m.user_id); setNameInput(m.profiles?.full_name || ""); };
+  const saveName = async (m) => {
+    await school.updateProfileName(m.user_id, nameInput);
+    setEditingNameFor(null); load();
+    toast("Name updated");
+  };
 
   if (loading) return <div className="card-sub">Loading...</div>;
   if (loadError) return <div className="card"><div className="auth-error">{loadError}</div><button type="button" className="chip-btn" style={{ marginTop: 10 }} onClick={load}>Try again</button></div>;
@@ -192,7 +200,18 @@ function RosterTab({ schoolId, divisions }) {
       {members.length === 0 ? <div className="card-sub">No one yet - share an invite code from the Invites tab.</div> : members.map((m) => (
         <div className="marks-row" key={m.id} style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13.5 }}>{m.profiles?.email || "Unknown"}</div>
+            {editingNameFor === m.user_id ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input className="input" style={{ padding: "6px 8px", fontSize: 13 }} placeholder={m.profiles?.email} value={nameInput} onChange={(e) => setNameInput(e.target.value)} autoFocus onKeyDown={(e) => e.key === "Enter" && saveName(m)} />
+                <button type="button" className="btn btn-icon" onClick={() => saveName(m)}><Check size={13} /></button>
+                <button type="button" className="btn btn-icon" onClick={() => setEditingNameFor(null)}><X size={13} /></button>
+              </div>
+            ) : (
+              <div style={{ fontWeight: 700, fontSize: 13.5, cursor: "pointer" }} onClick={() => startEditName(m)}>
+                {m.profiles?.full_name || m.profiles?.email || "Unknown"}
+                {m.profiles?.full_name && <span className="card-sub" style={{ fontWeight: 500 }}> ({m.profiles.email})</span>}
+              </div>
+            )}
             <div className="card-sub">{ROLE_LABELS[m.role] || m.role}</div>
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>

@@ -301,7 +301,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
 
   useEffect(() => {
     if (!cls?.grade) { setSyllabusChapters([]); return; }
-    db.fetchSyllabus(mySchool.id, cls.grade).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
+    db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
   }, [mySchool.id, cls?.grade]);
 
   const onChapterNumberBlur = async () => {
@@ -1161,7 +1161,7 @@ function PerformancePanel({ userId, classes, mySchool }) {
 
   useEffect(() => {
     if (!cls?.grade) { setSyllabusChapters([]); return; }
-    db.fetchSyllabus(mySchool.id, cls.grade).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
+    db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
   }, [mySchool.id, cls?.grade]);
 
   const addConceptFromSyllabus = (text) => {
@@ -1626,6 +1626,10 @@ function SyllabusPanel({ userId, classes, mySchool }) {
   const grades = [...new Set(classes.map((c) => c.grade).filter(Boolean))];
   const [grade, setGrade] = useState(grades[0] || "");
   useEffect(() => { if (!grade && grades[0]) setGrade(grades[0]); }, [grades, grade]);
+  const subjects = [...new Set(classes.filter((c) => c.grade === grade).map((c) => c.subject).filter(Boolean))];
+  const [subject, setSubject] = useState(subjects[0] || "");
+  useEffect(() => { if (!subjects.includes(subject)) setSubject(subjects[0] || ""); }, [grade]); // eslint-disable-line
+  const canEdit = mySchool?.role === "coordinator" || mySchool?.role === "school_admin" || mySchool?.role === "super_admin";
   const [chapters, setChapters] = useState([]);
   const [chapterNumber, setChapterNumber] = useState("");
   const [chapterName, setChapterName] = useState("");
@@ -1637,9 +1641,9 @@ function SyllabusPanel({ userId, classes, mySchool }) {
   const gradeClasses = classes.filter((c) => c.grade === grade);
 
   const load = useCallback(async () => {
-    if (!grade) return;
-    setChapters(await db.fetchSyllabus(mySchool.id, grade));
-  }, [mySchool.id, grade]);
+    if (!grade || !subject) { setChapters([]); return; }
+    setChapters(await db.fetchSyllabus(mySchool.id, grade, subject));
+  }, [mySchool.id, grade, subject]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -1653,15 +1657,15 @@ function SyllabusPanel({ userId, classes, mySchool }) {
   }, [userId, grade, classes.length]);
 
   const resetForm = () => { setChapterNumber(""); setChapterName(""); setKind("syllabus"); setEditingId(null); };
-  const startEdit = (c) => { setEditingId(c.id); setChapterNumber(c.chapter_number || ""); setChapterName(c.chapter_name); setKind(c.kind); };
+  const startEdit = (c) => { if (!canEdit) return; setEditingId(c.id); setChapterNumber(c.chapter_number || ""); setChapterName(c.chapter_name); setKind(c.kind); };
 
   const save = async () => {
-    if (!chapterName.trim()) return;
+    if (!chapterName.trim() || !subject) return;
     if (editingId) {
       await db.updateSyllabusChapter(editingId, { chapter_number: chapterNumber.trim() || null, chapter_name: chapterName.trim(), kind });
       toast("Chapter updated");
     } else {
-      await db.createSyllabusChapter(mySchool.id, userId, grade, { chapter_number: chapterNumber.trim(), chapter_name: chapterName.trim(), kind }, chapters.length);
+      await db.createSyllabusChapter(mySchool.id, userId, grade, subject, { chapter_number: chapterNumber.trim(), chapter_name: chapterName.trim(), kind }, chapters.length);
       toast("Chapter added");
     }
     resetForm(); load();
@@ -1669,7 +1673,7 @@ function SyllabusPanel({ userId, classes, mySchool }) {
   const remove = async (id) => { await db.deleteSyllabusChapter(id); if (editingId === id) resetForm(); load(); toast("Chapter removed"); };
   const importChapters = async (rows) => {
     const valid = rows.filter((r) => r.chapter_name?.trim());
-    await db.bulkCreateSyllabusChapters(mySchool.id, userId, grade, valid, chapters.length);
+    await db.bulkCreateSyllabusChapters(mySchool.id, userId, grade, subject, valid, chapters.length);
     setCsvImport(null); load();
     toast(`Imported ${valid.length} chapters`);
   };
@@ -1682,40 +1686,52 @@ function SyllabusPanel({ userId, classes, mySchool }) {
     <div>
       <div className="card">
         <div className="card-title-row">
-          <div className="field-label" style={{ marginTop: 0 }}>Grade</div>
-          <PhotoImportButton kind="syllabus" onResult={({ csv }) => setCsvImport(csv)} label="Import chapters" />
+          <div className="field-label" style={{ marginTop: 0 }}>Grade & subject</div>
+          {canEdit && <PhotoImportButton kind="syllabus" onResult={({ csv }) => setCsvImport(csv)} label="Import chapters" />}
         </div>
-        <select className="input" value={grade} onChange={(e) => { setGrade(e.target.value); resetForm(); }}>
-          {grades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
-        </select>
-        <div className="card-sub" style={{ marginTop: 8 }}>Shared by every class with this grade - sections don't duplicate the list.{gradeClasses.length > 1 ? ` (${gradeClasses.map((c) => c.name).join(", ")})` : ""}</div>
-      </div>
-      <div className="card">
-        <div className="card-title">{editingId ? "Edit chapter" : "Add a chapter"}</div>
         <div className="row-2">
-          <input className="input" placeholder="Number (optional)" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} />
-          <input className="input" placeholder="Chapter / unit name" value={chapterName} onChange={(e) => setChapterName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())} />
+          <select className="input" value={grade} onChange={(e) => { setGrade(e.target.value); resetForm(); }}>
+            {grades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+          </select>
+          {subjects.length > 0 ? (
+            <select className="input" value={subject} onChange={(e) => { setSubject(e.target.value); resetForm(); }}>
+              {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : (
+            <input className="input" placeholder="Subject (set on a class first)" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          )}
         </div>
-        <div className="cat-select" style={{ marginTop: 8 }}>
-          <button type="button" className={`cat-opt ${kind === "syllabus" ? "active" : ""}`} style={{ color: kind === "syllabus" ? "#F2790C" : undefined }} onClick={() => setKind("syllabus")}>Syllabus</button>
-          <button type="button" className={`cat-opt ${kind === "folder_work" ? "active" : ""}`} style={{ color: kind === "folder_work" ? "#8B7FC7" : undefined }} onClick={() => setKind("folder_work")}>Folder work</button>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          {editingId && <button type="button" className="btn btn-ghost" onClick={resetForm}>Cancel</button>}
-          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}><Plus size={14} /> {editingId ? "Save changes" : "Add"}</button>
-        </div>
+        <div className="card-sub" style={{ marginTop: 8 }}>Shared by every section of Grade {grade} teaching {subject || "this subject"}.{gradeClasses.length > 1 ? ` (${gradeClasses.map((c) => c.name).join(", ")})` : ""}</div>
+        {!canEdit && <div className="card-sub" style={{ marginTop: 4 }}>Only a coordinator or admin can add or edit chapters here - you can view and use the list.</div>}
       </div>
+      {canEdit && (
+        <div className="card">
+          <div className="card-title">{editingId ? "Edit chapter" : "Add a chapter"}</div>
+          <div className="row-2">
+            <input className="input" placeholder="Number (optional)" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} />
+            <input className="input" placeholder="Chapter / unit name" value={chapterName} onChange={(e) => setChapterName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())} />
+          </div>
+          <div className="cat-select" style={{ marginTop: 8 }}>
+            <button type="button" className={`cat-opt ${kind === "syllabus" ? "active" : ""}`} style={{ color: kind === "syllabus" ? "#F2790C" : undefined }} onClick={() => setKind("syllabus")}>Syllabus</button>
+            <button type="button" className={`cat-opt ${kind === "folder_work" ? "active" : ""}`} style={{ color: kind === "folder_work" ? "#8B7FC7" : undefined }} onClick={() => setKind("folder_work")}>Folder work</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {editingId && <button type="button" className="btn btn-ghost" onClick={resetForm}>Cancel</button>}
+            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}><Plus size={14} /> {editingId ? "Save changes" : "Add"}</button>
+          </div>
+        </div>
+      )}
       <div className="card">
         <div className="card-title">Chapter list</div>
-        {chapters.length === 0 ? <div className="card-sub">No chapters yet for this grade.</div> : chapters.map((c) => {
+        {!subject ? <div className="card-sub">Pick or set a subject above.</div> : chapters.length === 0 ? <div className="card-sub">No chapters yet for Grade {grade} {subject}.</div> : chapters.map((c) => {
           const taughtIn = c.chapter_number ? coverage[c.chapter_number] : null;
           return (
             <div className="marks-row" key={c.id}>
-              <div style={{ cursor: "pointer", flex: 1 }} onClick={() => startEdit(c)}>
+              <div style={{ cursor: canEdit ? "pointer" : "default", flex: 1 }} onClick={() => startEdit(c)}>
                 <span>{c.chapter_number ? `Ch ${c.chapter_number}: ` : ""}{c.chapter_name} {c.kind === "folder_work" && <span className="badge-mini" style={{ color: "#8B7FC7", background: "#8B7FC715" }}>Folder work</span>}</span>
                 <div className="card-sub" style={{ marginTop: 2 }}>{taughtIn?.length ? `Taught in ${taughtIn.join(", ")}` : "Not yet taught"}</div>
               </div>
-              <ConfirmDelete onConfirm={() => remove(c.id)} size={13} />
+              {canEdit && <ConfirmDelete onConfirm={() => remove(c.id)} size={13} />}
             </div>
           );
         })}
