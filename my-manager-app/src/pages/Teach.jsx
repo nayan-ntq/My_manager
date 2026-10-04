@@ -1630,7 +1630,11 @@ function SyllabusPanel({ userId, classes, mySchool }) {
   const [chapterNumber, setChapterNumber] = useState("");
   const [chapterName, setChapterName] = useState("");
   const [kind, setKind] = useState("syllabus");
+  const [editingId, setEditingId] = useState(null); // id of chapter being edited, or null for "add" mode
   const [csvImport, setCsvImport] = useState(null); // csv string
+  const [coverage, setCoverage] = useState({}); // chapter_number -> [class names that have taught it]
+
+  const gradeClasses = classes.filter((c) => c.grade === grade);
 
   const load = useCallback(async () => {
     if (!grade) return;
@@ -1638,13 +1642,31 @@ function SyllabusPanel({ userId, classes, mySchool }) {
   }, [mySchool.id, grade]);
   useEffect(() => { load(); }, [load]);
 
-  const add = async () => {
+  useEffect(() => {
+    if (!gradeClasses.length) { setCoverage({}); return; }
+    (async () => {
+      const perClass = await Promise.all(gradeClasses.map(async (c) => ({ name: c.name, numbers: await db.fetchChapterNumbers(userId, c.id) })));
+      const map = {};
+      for (const { name, numbers } of perClass) for (const n of numbers) (map[n] = map[n] || []).push(name);
+      setCoverage(map);
+    })();
+  }, [userId, grade, classes.length]);
+
+  const resetForm = () => { setChapterNumber(""); setChapterName(""); setKind("syllabus"); setEditingId(null); };
+  const startEdit = (c) => { setEditingId(c.id); setChapterNumber(c.chapter_number || ""); setChapterName(c.chapter_name); setKind(c.kind); };
+
+  const save = async () => {
     if (!chapterName.trim()) return;
-    await db.createSyllabusChapter(mySchool.id, userId, grade, { chapter_number: chapterNumber.trim(), chapter_name: chapterName.trim(), kind }, chapters.length);
-    setChapterNumber(""); setChapterName(""); load();
-    toast("Chapter added");
+    if (editingId) {
+      await db.updateSyllabusChapter(editingId, { chapter_number: chapterNumber.trim() || null, chapter_name: chapterName.trim(), kind });
+      toast("Chapter updated");
+    } else {
+      await db.createSyllabusChapter(mySchool.id, userId, grade, { chapter_number: chapterNumber.trim(), chapter_name: chapterName.trim(), kind }, chapters.length);
+      toast("Chapter added");
+    }
+    resetForm(); load();
   };
-  const remove = async (id) => { await db.deleteSyllabusChapter(id); load(); toast("Chapter removed"); };
+  const remove = async (id) => { await db.deleteSyllabusChapter(id); if (editingId === id) resetForm(); load(); toast("Chapter removed"); };
   const importChapters = async (rows) => {
     const valid = rows.filter((r) => r.chapter_name?.trim());
     await db.bulkCreateSyllabusChapters(mySchool.id, userId, grade, valid, chapters.length);
@@ -1663,31 +1685,40 @@ function SyllabusPanel({ userId, classes, mySchool }) {
           <div className="field-label" style={{ marginTop: 0 }}>Grade</div>
           <PhotoImportButton kind="syllabus" onResult={({ csv }) => setCsvImport(csv)} label="Import chapters" />
         </div>
-        <select className="input" value={grade} onChange={(e) => setGrade(e.target.value)}>
+        <select className="input" value={grade} onChange={(e) => { setGrade(e.target.value); resetForm(); }}>
           {grades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
         </select>
-        <div className="card-sub" style={{ marginTop: 8 }}>Shared by every class with this grade - sections don't duplicate the list.</div>
+        <div className="card-sub" style={{ marginTop: 8 }}>Shared by every class with this grade - sections don't duplicate the list.{gradeClasses.length > 1 ? ` (${gradeClasses.map((c) => c.name).join(", ")})` : ""}</div>
       </div>
       <div className="card">
-        <div className="card-title">Add a chapter</div>
+        <div className="card-title">{editingId ? "Edit chapter" : "Add a chapter"}</div>
         <div className="row-2">
           <input className="input" placeholder="Number (optional)" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} />
-          <input className="input" placeholder="Chapter / unit name" value={chapterName} onChange={(e) => setChapterName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
+          <input className="input" placeholder="Chapter / unit name" value={chapterName} onChange={(e) => setChapterName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())} />
         </div>
         <div className="cat-select" style={{ marginTop: 8 }}>
           <button type="button" className={`cat-opt ${kind === "syllabus" ? "active" : ""}`} style={{ color: kind === "syllabus" ? "#F2790C" : undefined }} onClick={() => setKind("syllabus")}>Syllabus</button>
           <button type="button" className={`cat-opt ${kind === "folder_work" ? "active" : ""}`} style={{ color: kind === "folder_work" ? "#8B7FC7" : undefined }} onClick={() => setKind("folder_work")}>Folder work</button>
         </div>
-        <button type="button" className="btn btn-primary" style={{ marginTop: 10, width: "100%" }} onClick={add}><Plus size={14} /> Add</button>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          {editingId && <button type="button" className="btn btn-ghost" onClick={resetForm}>Cancel</button>}
+          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}><Plus size={14} /> {editingId ? "Save changes" : "Add"}</button>
+        </div>
       </div>
       <div className="card">
         <div className="card-title">Chapter list</div>
-        {chapters.length === 0 ? <div className="card-sub">No chapters yet for this grade.</div> : chapters.map((c) => (
-          <div className="marks-row" key={c.id}>
-            <span>{c.chapter_number ? `Ch ${c.chapter_number}: ` : ""}{c.chapter_name} {c.kind === "folder_work" && <span className="badge-mini" style={{ color: "#8B7FC7", background: "#8B7FC715" }}>Folder work</span>}</span>
-            <ConfirmDelete onConfirm={() => remove(c.id)} size={13} />
-          </div>
-        ))}
+        {chapters.length === 0 ? <div className="card-sub">No chapters yet for this grade.</div> : chapters.map((c) => {
+          const taughtIn = c.chapter_number ? coverage[c.chapter_number] : null;
+          return (
+            <div className="marks-row" key={c.id}>
+              <div style={{ cursor: "pointer", flex: 1 }} onClick={() => startEdit(c)}>
+                <span>{c.chapter_number ? `Ch ${c.chapter_number}: ` : ""}{c.chapter_name} {c.kind === "folder_work" && <span className="badge-mini" style={{ color: "#8B7FC7", background: "#8B7FC715" }}>Folder work</span>}</span>
+                <div className="card-sub" style={{ marginTop: 2 }}>{taughtIn?.length ? `Taught in ${taughtIn.join(", ")}` : "Not yet taught"}</div>
+              </div>
+              <ConfirmDelete onConfirm={() => remove(c.id)} size={13} />
+            </div>
+          );
+        })}
       </div>
       {csvImport && (
         <CsvReviewSheet
