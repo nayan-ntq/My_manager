@@ -58,6 +58,73 @@ export async function removeStudent(id) {
   if (error) throw error;
 }
 
+/* ---------- school terms + holidays (admin sets, everyone reads) ---------- */
+
+export async function fetchTerms(schoolId) {
+  const { data, error } = await supabase.from("school_terms").select("*").eq("school_id", schoolId).order("start_date");
+  if (error) throw error;
+  return data || [];
+}
+export async function createTerm(schoolId, form) {
+  const { data, error } = await supabase.from("school_terms")
+    .insert({ school_id: schoolId, name: form.name, start_date: form.start_date, end_date: form.end_date, weekly_off_days: form.weekly_off_days })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateTerm(id, patch) {
+  const { error } = await supabase.from("school_terms").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function deleteTerm(id) {
+  const { error } = await supabase.from("school_terms").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function fetchHolidays(schoolId) {
+  const { data, error } = await supabase.from("school_holidays").select("*").eq("school_id", schoolId).order("date");
+  if (error) throw error;
+  return data || [];
+}
+export async function createHoliday(schoolId, date, label) {
+  const { data, error } = await supabase.from("school_holidays").insert({ school_id: schoolId, date, label: label || null }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function deleteHoliday(id) {
+  const { error } = await supabase.from("school_holidays").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/* ---------- teaching: syllabus (per-grade, shared across sections) ---------- */
+
+export async function fetchSyllabus(schoolId, grade, subject) {
+  let query = supabase.from("syllabus_chapters").select("*").eq("school_id", schoolId).eq("grade", grade).order("position");
+  if (subject) query = query.eq("subject", subject);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+export async function createSyllabusChapter(schoolId, userId, grade, subject, form, position) {
+  const { data, error } = await supabase.from("syllabus_chapters")
+    .insert({ school_id: schoolId, created_by: userId, grade, subject, chapter_number: form.chapter_number || null, chapter_name: form.chapter_name, kind: form.kind || "syllabus", position })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+export async function bulkCreateSyllabusChapters(schoolId, userId, grade, subject, rows, startPosition) {
+  const payload = rows.map((r, i) => ({ school_id: schoolId, created_by: userId, grade, subject, chapter_number: r.chapter_number || null, chapter_name: r.chapter_name, kind: "syllabus", position: startPosition + i }));
+  const { error } = await supabase.from("syllabus_chapters").insert(payload);
+  if (error) throw error;
+}
+export async function updateSyllabusChapter(id, patch) {
+  const { error } = await supabase.from("syllabus_chapters").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function deleteSyllabusChapter(id) {
+  const { error } = await supabase.from("syllabus_chapters").delete().eq("id", id);
+  if (error) throw error;
+}
+
 /* ---------- teaching: weekly timetable ---------- */
 
 export async function fetchTimetable(userId) {

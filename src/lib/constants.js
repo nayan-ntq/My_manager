@@ -1,4 +1,7 @@
-export const DEFAULT_TEST_TYPES = ["CT", "IA-1", "IA-2", "Term"];
+export const DEFAULT_TEST_TYPES = [
+  { name: "CT", passingMarks: null }, { name: "IA-1", passingMarks: null },
+  { name: "IA-2", passingMarks: null }, { name: "Term", passingMarks: null },
+];
 
 // medium a classwork/homework item was done in - purely descriptive, shown as a small tag
 export const MEDIUM_OPTIONS = [

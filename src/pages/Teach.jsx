@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter } from "lucide-react";
+import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen } from "lucide-react";
 import { Segmented } from "../components/Shared";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
@@ -279,16 +279,18 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
   );
 }
 
-function PlannerPanel({ userId, classes }) {
+function PlannerPanel({ userId, classes, mySchool }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [date, setDate] = useState(todayKey());
   const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", classworkItems: [], homeworkItems: [] });
   const [entries, setEntries] = useState([]);
   const [chapterNumbers, setChapterNumbers] = useState([]);
+  const [syllabusChapters, setSyllabusChapters] = useState([]);
   const [autoFilled, setAutoFilled] = useState(false);
   const [importReview, setImportReview] = useState(null); // array of extracted entries, pre-confirm
   const [editingEntry, setEditingEntry] = useState(null);
+  const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -296,6 +298,11 @@ function PlannerPanel({ userId, classes }) {
     setEntries(entryRows); setChapterNumbers(numbers);
   }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!cls?.grade) { setSyllabusChapters([]); return; }
+    db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
+  }, [mySchool.id, cls?.grade]);
 
   const onChapterNumberBlur = async () => {
     if (!form.chapter_number.trim() || form.chapter.trim()) return; // don't clobber a manually-typed name
@@ -308,6 +315,13 @@ function PlannerPanel({ userId, classes }) {
         homeworkItems: f.homeworkItems.length ? f.homeworkItems : (match.homework_items?.length ? match.homework_items : (match.exercise_list || []).map((t) => ({ text: t, medium: "", important: false }))),
       }));
       setAutoFilled(true);
+      return;
+    }
+    // no history for this number yet - fall back to the syllabus's name for it, if any
+    const syllabusMatch = syllabusChapters.find((c) => c.chapter_number === form.chapter_number.trim());
+    if (syllabusMatch) {
+      setForm((f) => ({ ...f, chapter: syllabusMatch.chapter_name }));
+      setAutoFilled(true);
     }
   };
 
@@ -316,22 +330,23 @@ function PlannerPanel({ userId, classes }) {
   };
 
   const confirmPlannerImport = async (rows) => {
-    const cls = classes.find((c) => c.id === classId);
     let created = 0;
+    const touchedClasses = new Set();
     for (const row of rows) {
-      if (!row.chapter?.trim() && !row.chapter_number?.trim()) continue;
-      await db.createPlannerEntry(userId, classId, row.date, {
+      if (!row.classId || (!row.chapter?.trim() && !row.chapter_number?.trim())) continue;
+      await db.createPlannerEntry(userId, row.classId, row.date, {
         chapter_number: row.chapter_number, chapter: row.chapter || "Untitled lesson",
         objectives: row.objectives, methodology: row.methodology, resources: row.resources,
         assignment: row.assignment, reflection: row.reflection, concepts: row.concepts,
         exercise_list: row.exercise_list, classwork_items: row.classwork_items, homework_items: row.homework_items,
       });
-      created++;
+      created++; touchedClasses.add(row.classId);
     }
-    await db.createImportLog(userId, "planner", cls?.name, JSON.stringify(rows.map((r) => r.date)), rows.length);
+    const classNames = [...touchedClasses].map((id) => classes.find((c) => c.id === id)?.name).filter(Boolean).join(", ");
+    await db.createImportLog(userId, "planner", classNames, JSON.stringify(rows.map((r) => r.date)), rows.length);
     setImportReview(null);
     load();
-    toast(`Imported ${created} lesson${created === 1 ? "" : "s"}`);
+    toast(`Imported ${created} lesson${created === 1 ? "" : "s"}${touchedClasses.size > 1 ? ` across ${touchedClasses.size} classes` : ""}`);
   };
 
   const save = async () => {
@@ -360,7 +375,7 @@ function PlannerPanel({ userId, classes }) {
       <div className="card">
         <div className="card-title-row">
           <div className="card-title" style={{ marginBottom: 0 }}>Daily / weekly planner entry</div>
-          <PhotoImportButton kind="planner" context={{ classHint: classes.find((c) => c.id === classId)?.name }} onResult={applyPhotoImport} />
+          <PhotoImportButton kind="planner" context={{ classHint: classes.find((c) => c.id === classId)?.name, allClassNames: classes.map((c) => c.name) }} onResult={applyPhotoImport} />
         </div>
         <div className="field-label">Class</div>
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />
@@ -372,7 +387,7 @@ function PlannerPanel({ userId, classes }) {
             <input className="input" list="chapter-numbers" placeholder="e.g. 3" value={form.chapter_number}
               onChange={(e) => { setAutoFilled(false); setForm({ ...form, chapter_number: e.target.value }); }}
               onBlur={onChapterNumberBlur} />
-            <datalist id="chapter-numbers">{chapterNumbers.map((n) => <option key={n} value={n} />)}</datalist>
+            <datalist id="chapter-numbers">{[...new Set([...chapterNumbers, ...syllabusChapters.map((c) => c.chapter_number).filter(Boolean)])].map((n) => <option key={n} value={n} />)}</datalist>
           </div>
           <div>
             <div className="field-label">Chapter name</div>
@@ -434,6 +449,8 @@ function PlannerPanel({ userId, classes }) {
       {importReview && (
         <PlannerImportReviewSheet
           entries={importReview}
+          classes={classes}
+          defaultClassId={classId}
           onClose={() => setImportReview(null)}
           onConfirm={confirmPlannerImport}
         />
@@ -587,6 +604,53 @@ function TypeListEditor({ title, items, onSave, onClose }) {
           <input className="input" placeholder="e.g. Classwork" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
           <button type="button" className="btn btn-ghost" onClick={add}><Plus size={14} /></button>
         </div>
+        <div className="sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => onSave(list)} disabled={list.length === 0}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Admin-only editor for exam types + each one's passing marks - unlike checking types,
+ *  teachers can select from this list but not change it. */
+function ExamTypeEditor({ items, onSave, onClose }) {
+  const [list, setList] = useState(items);
+  const [name, setName] = useState("");
+  const [passingMarks, setPassingMarks] = useState("");
+  const add = () => {
+    const v = name.trim();
+    if (!v || list.some((t) => t.name === v)) return;
+    setList([...list, { name: v, passingMarks: passingMarks === "" ? null : Number(passingMarks) }]);
+    setName(""); setPassingMarks("");
+  };
+  const remove = (i) => setList(list.filter((_, idx) => idx !== i));
+  const updatePassing = (i, val) => setList(list.map((t, idx) => idx === i ? { ...t, passingMarks: val === "" ? null : Number(val) } : t));
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Exam types</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="card-sub" style={{ marginBottom: 10 }}>Shared across every class in your school. Only admins can edit this list; teachers pick from it.</div>
+        {list.map((t, i) => (
+          <div key={t.name} className="row-2" style={{ marginBottom: 8, alignItems: "center" }}>
+            <div className="input" style={{ display: "flex", alignItems: "center" }}>{t.name}</div>
+            <div style={{ display: "flex", gap: 6, flex: 1 }}>
+              <input className="input" type="number" placeholder="Passing marks" value={t.passingMarks ?? ""} onChange={(e) => updatePassing(i, e.target.value)} />
+              <button type="button" className="btn btn-icon" onClick={() => remove(i)}><X size={13} /></button>
+            </div>
+          </div>
+        ))}
+        {list.length === 0 && <div className="card-sub" style={{ marginBottom: 8 }}>No exam types yet - add one below.</div>}
+        <div className="row-2" style={{ marginTop: 6 }}>
+          <input className="input" placeholder="e.g. CT" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" type="number" placeholder="Passing marks" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} />
+        </div>
+        <button type="button" className="chip-btn" style={{ marginTop: 8 }} onClick={add}><Plus size={12} /> Add type</button>
         <div className="sheet-actions">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="btn btn-primary" onClick={() => onSave(list)} disabled={list.length === 0}>Save</button>
@@ -1030,10 +1094,10 @@ function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
   const [title, setTitle] = useState(record.title);
   const [testType, setTestType] = useState(record.test_type);
   const [maxMarks, setMaxMarks] = useState(record.max_marks);
-  const [passingMarks, setPassingMarks] = useState(record.passing_marks ?? "");
   const [chapterCount, setChapterCount] = useState(record.chapter_count ?? "");
   const [exercises, setExercises] = useState(record.exercises || "");
   const [conceptsInput, setConceptsInput] = useState((record.concepts || []).join(", "));
+  const presetPassingMarks = testTypes.find((t) => t.name === testType)?.passingMarks;
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -1046,12 +1110,12 @@ function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
         <div className="field-label">Test type</div>
         <select className="input" value={testType} onChange={(e) => setTestType(e.target.value)}>
-          {!testTypes.includes(testType) && <option value={testType}>{testType}</option>}
-          {testTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          {!testTypes.some((t) => t.name === testType) && <option value={testType}>{testType}</option>}
+          {testTypes.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
         </select>
         <div className="row-2">
           <div><div className="field-label">Max marks</div><input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} /></div>
-          <div><div className="field-label">Passing marks</div><input type="number" className="input" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} /></div>
+          <div><div className="field-label">Passing marks</div><div className="input" style={{ color: "#9c9488" }}>{presetPassingMarks ?? "Not set by admin"}</div></div>
         </div>
         <div className="field-label">Number of chapters</div>
         <input type="number" className="input" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
@@ -1063,7 +1127,7 @@ function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="btn btn-primary" onClick={() => title.trim() && onSave({
             title: title.trim(), test_type: testType.trim(), max_marks: Number(maxMarks),
-            passing_marks: passingMarks === "" ? null : Number(passingMarks),
+            passing_marks: presetPassingMarks ?? null,
             chapter_count: chapterCount === "" ? null : Number(chapterCount),
             exercises: exercises.trim() || null,
             concepts: conceptsInput.split(",").map((s) => s.trim()).filter(Boolean),
@@ -1079,9 +1143,10 @@ function PerformancePanel({ userId, classes, mySchool }) {
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [creating, setCreating] = useState(false);
   const [testTypes, setTestTypes] = useState(mySchool?.testTypes?.length ? mySchool.testTypes : DEFAULT_TEST_TYPES);
-  const [title, setTitle] = useState(""); const [testType, setTestType] = useState(testTypes[0] || ""); const [maxMarks, setMaxMarks] = useState(20);
+  const isAdmin = mySchool?.role === "school_admin" || mySchool?.role === "super_admin";
+  const [title, setTitle] = useState(""); const [testType, setTestType] = useState(testTypes[0]?.name || ""); const [maxMarks, setMaxMarks] = useState(20);
   const [editingTypes, setEditingTypes] = useState(false);
-  const [passingMarks, setPassingMarks] = useState("");
+  const presetPassingMarks = testTypes.find((t) => t.name === testType)?.passingMarks;
   const [chapterCount, setChapterCount] = useState("");
   const [exercises, setExercises] = useState("");
   const [conceptsInput, setConceptsInput] = useState("");
@@ -1091,7 +1156,19 @@ function PerformancePanel({ userId, classes, mySchool }) {
   const [showMore, setShowMore] = useState(false);
   const [marksImport, setMarksImport] = useState(null); // { record, csv }
   const [editingRecord, setEditingRecord] = useState(null);
+  const [syllabusChapters, setSyllabusChapters] = useState([]);
   const cls = classes.find((c) => c.id === classId);
+
+  useEffect(() => {
+    if (!cls?.grade) { setSyllabusChapters([]); return; }
+    db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
+  }, [mySchool.id, cls?.grade]);
+
+  const addConceptFromSyllabus = (text) => {
+    const existing = conceptsInput.split(",").map((x) => x.trim()).filter(Boolean);
+    if (existing.includes(text)) return;
+    setConceptsInput([...existing, text].join(", "));
+  };
 
   const saveTestTypes = async (list) => {
     await school.updateSchoolTypeLists(mySchool.id, { testTypes: list });
@@ -1112,8 +1189,8 @@ function PerformancePanel({ userId, classes, mySchool }) {
     if (concepts.length === 0) {
       concepts = await db.fetchPlannerChapters(userId, classId); // fall back to everything logged in the planner
     }
-    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts, passingMarks ? Number(passingMarks) : null);
-    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setPassingMarks(""); setCreating(false); setShowMore(false);
+    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts, presetPassingMarks ?? null);
+    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setCreating(false); setShowMore(false);
     load();
     toast("Test record created");
   };
@@ -1181,25 +1258,29 @@ function PerformancePanel({ userId, classes, mySchool }) {
               <input className="input" placeholder="Test title" value={title} onChange={(e) => setTitle(e.target.value)} />
               <select className="input" value={testType} onChange={(e) => setTestType(e.target.value)}>
                 <option value="">Type...</option>
-                {testTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                {testTypes.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
               </select>
             </div>
-            <button type="button" className="chip-btn" style={{ marginTop: 8 }} onClick={() => setEditingTypes(true)}>Edit exam types</button>
+            {testType && <div className="card-sub" style={{ marginTop: 6 }}>Passing marks: {presetPassingMarks ?? "not set by admin"}</div>}
+            {isAdmin && <button type="button" className="chip-btn" style={{ marginTop: 8 }} onClick={() => setEditingTypes(true)}>Edit exam types</button>}
             <div className="field-label">Max marks</div>
             <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
             <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
-              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide extra details" : "Passing marks, chapters & concepts (optional)"}
+              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide extra details" : "Chapters & concepts (optional)"}
             </button>
             {showMore && (
               <div className="more-details-body">
-                <div className="field-label">Passing marks</div>
-                <input type="number" className="input" placeholder="e.g. 8" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} />
                 <div className="field-label">Number of chapters involved</div>
                 <input type="number" min="0" className="input" placeholder="e.g. 2" value={chapterCount} onChange={(e) => setChapterCount(e.target.value)} />
                 <div className="field-label">Exercises (optional)</div>
                 <input className="input" placeholder="e.g. Ex 3.1, 3.2" value={exercises} onChange={(e) => setExercises(e.target.value)} />
                 <div className="field-label">Concepts covered (optional, comma-separated)</div>
                 <input className="input" placeholder="Leave blank to pull every concept logged in the Planner for this class" value={conceptsInput} onChange={(e) => setConceptsInput(e.target.value)} />
+                {syllabusChapters.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {syllabusChapters.map((c) => <button type="button" key={c.id} className="chip-btn" onClick={() => addConceptFromSyllabus(c.chapter_name)}>{c.chapter_number ? `Ch ${c.chapter_number}: ` : ""}{c.chapter_name}</button>)}
+                  </div>
+                )}
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -1300,8 +1381,8 @@ function PerformancePanel({ userId, classes, mySchool }) {
           onSave={(patch) => saveRecordMeta(editingRecord.id, patch)}
         />
       )}
-      {editingTypes && (
-        <TypeListEditor title="Exam types" items={testTypes} onClose={() => setEditingTypes(false)} onSave={saveTestTypes} />
+      {editingTypes && isAdmin && (
+        <ExamTypeEditor items={testTypes} onClose={() => setEditingTypes(false)} onSave={saveTestTypes} />
       )}
     </div>
   );
@@ -1538,9 +1619,140 @@ function ConceptsPanel({ userId, classes }) {
   );
 }
 
+/** Canonical per-grade chapter list (shared across every section of that grade), plus
+ *  "folder work" for supplementary material the school itself hands out. Manual entry
+ *  or photo import (camera/library via PhotoImportButton -> CsvReviewSheet). */
+function SyllabusPanel({ userId, classes, mySchool }) {
+  const grades = [...new Set(classes.map((c) => c.grade).filter(Boolean))];
+  const [grade, setGrade] = useState(grades[0] || "");
+  useEffect(() => { if (!grade && grades[0]) setGrade(grades[0]); }, [grades, grade]);
+  const subjects = [...new Set(classes.filter((c) => c.grade === grade).map((c) => c.subject).filter(Boolean))];
+  const [subject, setSubject] = useState(subjects[0] || "");
+  useEffect(() => { if (!subjects.includes(subject)) setSubject(subjects[0] || ""); }, [grade]); // eslint-disable-line
+  const canEdit = mySchool?.role === "coordinator" || mySchool?.role === "school_admin" || mySchool?.role === "super_admin";
+  const [chapters, setChapters] = useState([]);
+  const [chapterNumber, setChapterNumber] = useState("");
+  const [chapterName, setChapterName] = useState("");
+  const [kind, setKind] = useState("syllabus");
+  const [editingId, setEditingId] = useState(null); // id of chapter being edited, or null for "add" mode
+  const [csvImport, setCsvImport] = useState(null); // csv string
+  const [coverage, setCoverage] = useState({}); // chapter_number -> [class names that have taught it]
+
+  const gradeClasses = classes.filter((c) => c.grade === grade);
+
+  const load = useCallback(async () => {
+    if (!grade || !subject) { setChapters([]); return; }
+    setChapters(await db.fetchSyllabus(mySchool.id, grade, subject));
+  }, [mySchool.id, grade, subject]);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!gradeClasses.length) { setCoverage({}); return; }
+    (async () => {
+      const perClass = await Promise.all(gradeClasses.map(async (c) => ({ name: c.name, numbers: await db.fetchChapterNumbers(userId, c.id) })));
+      const map = {};
+      for (const { name, numbers } of perClass) for (const n of numbers) (map[n] = map[n] || []).push(name);
+      setCoverage(map);
+    })();
+  }, [userId, grade, classes.length]);
+
+  const resetForm = () => { setChapterNumber(""); setChapterName(""); setKind("syllabus"); setEditingId(null); };
+  const startEdit = (c) => { if (!canEdit) return; setEditingId(c.id); setChapterNumber(c.chapter_number || ""); setChapterName(c.chapter_name); setKind(c.kind); };
+
+  const save = async () => {
+    if (!chapterName.trim() || !subject) return;
+    if (editingId) {
+      await db.updateSyllabusChapter(editingId, { chapter_number: chapterNumber.trim() || null, chapter_name: chapterName.trim(), kind });
+      toast("Chapter updated");
+    } else {
+      await db.createSyllabusChapter(mySchool.id, userId, grade, subject, { chapter_number: chapterNumber.trim(), chapter_name: chapterName.trim(), kind }, chapters.length);
+      toast("Chapter added");
+    }
+    resetForm(); load();
+  };
+  const remove = async (id) => { await db.deleteSyllabusChapter(id); if (editingId === id) resetForm(); load(); toast("Chapter removed"); };
+  const importChapters = async (rows) => {
+    const valid = rows.filter((r) => r.chapter_name?.trim());
+    await db.bulkCreateSyllabusChapters(mySchool.id, userId, grade, subject, valid, chapters.length);
+    setCsvImport(null); load();
+    toast(`Imported ${valid.length} chapters`);
+  };
+
+  if (grades.length === 0) {
+    return <div className="card"><div className="empty-state-text">Set a Grade on your classes (Teach {'\u2192'} Classes) to use a shared syllabus across sections.</div></div>;
+  }
+
+  return (
+    <div>
+      <div className="card">
+        <div className="card-title-row">
+          <div className="field-label" style={{ marginTop: 0 }}>Grade & subject</div>
+          {canEdit && <PhotoImportButton kind="syllabus" onResult={({ csv }) => setCsvImport(csv)} label="Import chapters" />}
+        </div>
+        <div className="row-2">
+          <select className="input" value={grade} onChange={(e) => { setGrade(e.target.value); resetForm(); }}>
+            {grades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+          </select>
+          {subjects.length > 0 ? (
+            <select className="input" value={subject} onChange={(e) => { setSubject(e.target.value); resetForm(); }}>
+              {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : (
+            <input className="input" placeholder="Subject (set on a class first)" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          )}
+        </div>
+        <div className="card-sub" style={{ marginTop: 8 }}>Shared by every section of Grade {grade} teaching {subject || "this subject"}.{gradeClasses.length > 1 ? ` (${gradeClasses.map((c) => c.name).join(", ")})` : ""}</div>
+        {!canEdit && <div className="card-sub" style={{ marginTop: 4 }}>Only a coordinator or admin can add or edit chapters here - you can view and use the list.</div>}
+      </div>
+      {canEdit && (
+        <div className="card">
+          <div className="card-title">{editingId ? "Edit chapter" : "Add a chapter"}</div>
+          <div className="row-2">
+            <input className="input" placeholder="Number (optional)" value={chapterNumber} onChange={(e) => setChapterNumber(e.target.value)} />
+            <input className="input" placeholder="Chapter / unit name" value={chapterName} onChange={(e) => setChapterName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())} />
+          </div>
+          <div className="cat-select" style={{ marginTop: 8 }}>
+            <button type="button" className={`cat-opt ${kind === "syllabus" ? "active" : ""}`} style={{ color: kind === "syllabus" ? "#F2790C" : undefined }} onClick={() => setKind("syllabus")}>Syllabus</button>
+            <button type="button" className={`cat-opt ${kind === "folder_work" ? "active" : ""}`} style={{ color: kind === "folder_work" ? "#8B7FC7" : undefined }} onClick={() => setKind("folder_work")}>Folder work</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {editingId && <button type="button" className="btn btn-ghost" onClick={resetForm}>Cancel</button>}
+            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={save}><Plus size={14} /> {editingId ? "Save changes" : "Add"}</button>
+          </div>
+        </div>
+      )}
+      <div className="card">
+        <div className="card-title">Chapter list</div>
+        {!subject ? <div className="card-sub">Pick or set a subject above.</div> : chapters.length === 0 ? <div className="card-sub">No chapters yet for Grade {grade} {subject}.</div> : chapters.map((c) => {
+          const taughtIn = c.chapter_number ? coverage[c.chapter_number] : null;
+          return (
+            <div className="marks-row" key={c.id}>
+              <div style={{ cursor: canEdit ? "pointer" : "default", flex: 1 }} onClick={() => startEdit(c)}>
+                <span>{c.chapter_number ? `Ch ${c.chapter_number}: ` : ""}{c.chapter_name} {c.kind === "folder_work" && <span className="badge-mini" style={{ color: "#8B7FC7", background: "#8B7FC715" }}>Folder work</span>}</span>
+                <div className="card-sub" style={{ marginTop: 2 }}>{taughtIn?.length ? `Taught in ${taughtIn.join(", ")}` : "Not yet taught"}</div>
+              </div>
+              {canEdit && <ConfirmDelete onConfirm={() => remove(c.id)} size={13} />}
+            </div>
+          );
+        })}
+      </div>
+      {csvImport && (
+        <CsvReviewSheet
+          title="Import syllabus"
+          csv={csvImport}
+          columns={["chapter_number", "chapter_name"]}
+          onClose={() => setCsvImport(null)}
+          onConfirm={importChapters}
+        />
+      )}
+    </div>
+  );
+}
+
 const TEACH_SECTIONS = [
   { value: "planner", label: "Planner", sub: "Chapters, objectives & concepts", icon: ClipboardList, color: "#F2790C" },
   { value: "concepts", label: "Classwork & Homework", sub: "Every question/concept logged, filterable", icon: Filter, color: "#8B7FC7" },
+  { value: "syllabus", label: "Syllabus", sub: "Chapters per grade, shared across sections", icon: BookOpen, color: "#5B7FDB" },
   { value: "attendance", label: "Attendance", sub: "Today's roll call, class by class", icon: ClipboardCheck, color: "#2FA88F" },
   { value: "correction", label: "Correction", sub: "Classwork & homework check-off", icon: Check, color: "#5B7FDB" },
   { value: "performance", label: "Scores", sub: "Tests, marks & concept breakdown", icon: BarChart3, color: "#8B7FC7" },
@@ -1580,8 +1792,7 @@ function TeachHome({ classes, sections, onOpen }) {
   );
 }
 
-export default function Teach({ userId, classes, reloadClasses, school: mySchool }) {
-  const [sub, setSub] = useState(null);
+export default function Teach({ userId, classes, reloadClasses, school: mySchool, sub, onSubChange }) {
   const role = mySchool?.role;
   const canReview = role === "coordinator" || role === "school_admin" || role === "super_admin";
   const canAdmin = role === "school_admin" || role === "super_admin";
@@ -1592,16 +1803,18 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
     ...(canAdmin ? [ADMIN_SECTION] : []),
   ];
 
-  if (!sub) return <TeachHome classes={classes} sections={sections} onOpen={setSub} />;
+  if (!sub) return <TeachHome classes={classes} sections={sections} onOpen={onSubChange} />;
 
   const section = sections.find((s) => s.value === sub);
+  if (!section) return <TeachHome classes={classes} sections={sections} onOpen={onSubChange} />;
   return (
     <div className="page">
-      <button type="button" className="section-back" onClick={() => setSub(null)}>
+      <button type="button" className="section-back" onClick={() => onSubChange(null)}>
         <ChevronLeft size={18} /> <span className="section-back-icon" style={{ color: section.color, background: `${section.color}17` }}><section.icon size={15} /></span> {section.label}
       </button>
-      {sub === "planner" && <PlannerPanel userId={userId} classes={classes} />}
+      {sub === "planner" && <PlannerPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "concepts" && <ConceptsPanel userId={userId} classes={classes} />}
+      {sub === "syllabus" && <SyllabusPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "attendance" && <AttendancePanel userId={userId} classes={classes} />}
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} mySchool={mySchool} />}

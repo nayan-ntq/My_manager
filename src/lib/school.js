@@ -101,12 +101,31 @@ export async function setClassDivision(classId, divisionId) {
 
 export async function fetchSchoolMembers(schoolId) {
   const { data, error } = await supabase.from("school_members")
-    .select("*, profiles(email)").eq("school_id", schoolId).order("created_at");
+    .select("*, profiles(email, full_name, subjects_taught)").eq("school_id", schoolId).order("created_at");
   if (error) throw error;
   return data || [];
 }
 export async function updateMemberRole(memberId, role, divisionId) {
   const { error } = await supabase.from("school_members").update({ role, division_id: divisionId || null }).eq("id", memberId);
+  if (error) throw error;
+}
+/** Sets a person's display name - an admin can do this for anyone in their school, or a person for themself. */
+export async function updateProfileName(userId, fullName) {
+  const { error } = await supabase.from("profiles").update({ full_name: fullName.trim() || null }).eq("id", userId);
+  if (error) throw error;
+}
+export async function fetchMyProfile(userId) {
+  const { data, error } = await supabase.from("profiles").select("full_name, subjects_taught, email").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+/** Self-service profile update - name and the subjects a teacher declares they teach
+ *  (shown to the admin in People, so they know what to assign before classes exist yet). */
+export async function updateMyProfile(userId, patch) {
+  const dbPatch = {};
+  if ("fullName" in patch) dbPatch.full_name = patch.fullName.trim() || null;
+  if ("subjectsTaught" in patch) dbPatch.subjects_taught = patch.subjectsTaught.trim() || null;
+  const { error } = await supabase.from("profiles").update(dbPatch).eq("id", userId);
   if (error) throw error;
 }
 export async function removeMember(memberId) {

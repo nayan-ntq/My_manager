@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Spinner from "../components/Spinner";
 import * as db from "../lib/db";
+import { computeWorkingDays } from "../lib/terms";
 
 function addDays(d, n) { const c = new Date(d); c.setDate(c.getDate() + n); return c; }
 function toKey(d) { return d.toISOString().slice(0, 10); }
@@ -22,9 +23,11 @@ function attendancePct(rows, classes) {
   return total ? Math.round((present / total) * 100) : null;
 }
 
-export default function Insights({ userId, classes }) {
+export default function Insights({ userId, classes, school }) {
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [performanceRows, setPerformanceRows] = useState([]);
+  const [terms, setTerms] = useState([]);
+  const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const last7 = useMemo(() => Array.from({ length: 7 }, (_, i) => toKey(addDays(new Date(), -i))).reverse(), []);
 
@@ -33,14 +36,16 @@ export default function Insights({ userId, classes }) {
       setLoading(true);
       try {
         const from = last7[0], to = last7[last7.length - 1];
-        const [attendance, performance] = await Promise.all([
+        const [attendance, performance, termRows, holidayRows] = await Promise.all([
           db.fetchAttendanceRange(userId, from, to),
           db.fetchAllPerformanceRecords(userId),
+          school?.id ? db.fetchTerms(school.id) : Promise.resolve([]),
+          school?.id ? db.fetchHolidays(school.id) : Promise.resolve([]),
         ]);
-        setAttendanceRows(attendance); setPerformanceRows(performance);
+        setAttendanceRows(attendance); setPerformanceRows(performance); setTerms(termRows); setHolidays(holidayRows);
       } finally { setLoading(false); }
     })();
-  }, [userId, last7]);
+  }, [userId, last7, school?.id]);
 
   const studentCount = classes.reduce((sum, c) => sum + c.students.length, 0);
   const attendanceRate = attendancePct(attendanceRows, classes);
@@ -79,6 +84,26 @@ export default function Insights({ userId, classes }) {
           ))}
         </div>
       </div>
+      {terms.length > 0 && (
+        <div className="card">
+          <div className="card-title">Terms</div>
+          {terms.map((t) => {
+            const inRangeHolidays = holidays.filter((h) => h.date >= t.start_date && h.date <= t.end_date).map((h) => h.date);
+            return (
+              <div className="marks-row" key={t.id}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.name}</div>
+                  <div className="card-sub mono">{t.start_date} to {t.end_date}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#F2790C" }}>{computeWorkingDays(t, inRangeHolidays)}</div>
+                  <div className="card-sub">working days</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="card">
         <div className="card-title">Classes</div>
         {classes.length === 0 ? <div className="card-sub">No classes added yet. Add one in Teach, under Classes.</div> : classes.map((c) => (
