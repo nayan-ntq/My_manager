@@ -60,6 +60,16 @@ grade. Extract every chapter as CSV with header "chapter_number,chapter_name" - 
 the order they appear on the page. Preserve names exactly as written (fix obvious OCR errors only, don't
 invent chapters). Return ONLY the CSV text, no commentary, no markdown code fences.`,
 
+  holidays: (ctx) => `Read these photo(s) of a yearly school calendar (or an academic-calendar page) with
+holidays marked - by highlighting, circling, a legend/color-code, or a separate holidays list. Extract
+every marked holiday as CSV with header "date,label" - one row per date, date in YYYY-MM-DD format. If a
+holiday spans a range of consecutive days (e.g. a week-long break), list EVERY individual date in that
+range as its own row, all with the same label. The calendar may not show the year explicitly on each
+page/month - use ${ctx?.calendarYearHint || "the year(s) shown on the page, or infer from context"} to
+resolve full dates. "label" is the holiday's name as written (e.g. "Diwali", "Summer break") - use an
+empty label only if genuinely no name is given. Don't invent holidays that aren't actually marked. Return
+ONLY the CSV text, no commentary, no markdown code fences.`,
+
   timetable: () => `Read this photo of a weekly class timetable. Extract as CSV with header
 "day_of_week,start_time,end_time,class_name,label" where day_of_week is 0-6 (0=Sunday) and times are in
 24-hour HH:MM format. One row per period. Return ONLY the CSV text, no commentary, no markdown code fences.`,

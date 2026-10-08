@@ -6,6 +6,8 @@ import { toast } from "./Toast";
 import * as school from "../lib/school";
 import * as db from "../lib/db";
 import { computeWorkingDays, WEEKDAY_LABELS } from "../lib/terms";
+import PhotoImportButton from "./PhotoImportButton";
+import CsvReviewSheet from "./CsvReviewSheet";
 
 /* ---------- terms + holidays (admin sets dates, everyone can see working days) ---------- */
 
@@ -51,6 +53,7 @@ function TermsTab({ schoolId, canEdit }) {
   const [editingTerm, setEditingTerm] = useState(null); // term object, or "new"
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayLabel, setHolidayLabel] = useState("");
+  const [holidayCsvImport, setHolidayCsvImport] = useState(null); // csv string
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -74,6 +77,11 @@ function TermsTab({ schoolId, canEdit }) {
     toast("Holiday added");
   };
   const removeHoliday = async (id) => { await db.deleteHoliday(id); load(); toast("Holiday removed"); };
+  const importHolidays = async (rows) => {
+    const count = await db.bulkCreateHolidays(schoolId, rows);
+    setHolidayCsvImport(null); load();
+    toast(`Imported ${count} holiday${count === 1 ? "" : "s"}`);
+  };
 
   if (loading) return <div className="card-sub">Loading...</div>;
 
@@ -103,7 +111,10 @@ function TermsTab({ schoolId, canEdit }) {
       </div>
       {canEdit && (
         <div className="card">
-          <div className="card-title">Holidays (excluded from every term's count)</div>
+          <div className="card-title-row">
+            <div className="card-title" style={{ marginBottom: 0 }}>Holidays (excluded from every term's count)</div>
+            <PhotoImportButton kind="holidays" context={{ calendarYearHint: new Date().getFullYear() }} onResult={({ csv }) => setHolidayCsvImport(csv)} label="Import from calendar" />
+          </div>
           <div className="row-2">
             <input type="date" className="input" value={holidayDate} onChange={(e) => setHolidayDate(e.target.value)} />
             <input className="input" placeholder="Label (optional)" value={holidayLabel} onChange={(e) => setHolidayLabel(e.target.value)} />
@@ -123,6 +134,15 @@ function TermsTab({ schoolId, canEdit }) {
           onClose={() => setEditingTerm(null)}
           onSave={saveTerm}
           onDelete={() => deleteTerm(editingTerm.id)}
+        />
+      )}
+      {holidayCsvImport && (
+        <CsvReviewSheet
+          title="Import holidays"
+          csv={holidayCsvImport}
+          columns={["date", "label"]}
+          onClose={() => setHolidayCsvImport(null)}
+          onConfirm={importHolidays}
         />
       )}
     </div>

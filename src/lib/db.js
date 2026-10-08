@@ -25,10 +25,30 @@ export async function signOut() { await supabase.auth.signOut(); }
 
 /* ---------- teaching: classes + students ---------- */
 
+/** Students are shown by roll number (numeric-aware, so "2" sorts before "10") -
+ *  falls back to creation order for students with no roll number set. */
+function sortStudents(students) {
+  return [...(students || [])].sort((a, b) => {
+    const an = parseFloat(a.roll_no), bn = parseFloat(b.roll_no);
+    const aHas = a.roll_no && !isNaN(an), bHas = b.roll_no && !isNaN(bn);
+    if (aHas && bHas) return an - bn;
+    if (aHas) return -1;
+    if (bHas) return 1;
+    return a.position - b.position;
+  });
+}
+
 export async function fetchClasses(userId) {
   const { data, error } = await supabase.from("classes").select("*, students(*)").eq("user_id", userId).order("created_at");
   if (error) throw error;
-  return (data || []).map((c) => ({ ...c, students: (c.students || []).sort((a, b) => a.position - b.position) }));
+  return (data || []).map((c) => ({ ...c, students: sortStudents(c.students) }));
+}
+/** Every class in the school this caller can see - their own, plus (for admin/coordinator)
+ *  everyone else's, via the reviewer RLS policies. Powers school-wide Insights and student profiles. */
+export async function fetchSchoolClasses(schoolId) {
+  const { data, error } = await supabase.from("classes").select("*, students(*)").eq("school_id", schoolId).order("created_at");
+  if (error) throw error;
+  return (data || []).map((c) => ({ ...c, students: sortStudents(c.students) }));
 }
 export async function createClass(userId, name, subject, grade) {
   const { data, error } = await supabase.from("classes").insert({ user_id: userId, name, subject, grade: grade || null }).select().single();
@@ -56,6 +76,44 @@ export async function updateStudent(id, patch) {
 export async function removeStudent(id) {
   const { error } = await supabase.from("students").delete().eq("id", id);
   if (error) throw error;
+}
+
+/* ---------- school-wide reads (for admin/coordinator - relies on the reviewer RLS
+   policies rather than filtering by the calling user's own id) ---------- */
+
+export async function fetchAttendanceForClassAll(classId) {
+  const { data, error } = await supabase.from("attendance_records").select("*").eq("class_id", classId).order("date", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function fetchCorrectionRecordsForClassAll(classId) {
+  const { data, error } = await supabase.from("correction_records").select("*").eq("class_id", classId).order("date", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function fetchPerformanceRecordsForClassAll(classId) {
+  const { data, error } = await supabase.from("performance_records").select("*").eq("class_id", classId).order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function fetchPlannerEntriesForClassAll(classId) {
+  const { data, error } = await supabase.from("planner_entries").select("*").eq("class_id", classId).order("date", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+/** Raw activity rows (class_id + created_at) across every class in a set, for tallying
+ *  per-teacher activity counts in Insights - Teachers. */
+export async function fetchActivityForClasses(classIds) {
+  if (!classIds.length) return { planner: [], correction: [], performance: [] };
+  const [planner, correction, performance] = await Promise.all([
+    supabase.from("planner_entries").select("class_id, created_at").in("class_id", classIds),
+    supabase.from("correction_records").select("class_id, created_at").in("class_id", classIds),
+    supabase.from("performance_records").select("class_id, created_at").in("class_id", classIds),
+  ]);
+  if (planner.error) throw planner.error;
+  if (correction.error) throw correction.error;
+  if (performance.error) throw performance.error;
+  return { planner: planner.data || [], correction: correction.data || [], performance: performance.data || [] };
 }
 
 /* ---------- school terms + holidays (admin sets, everyone reads) ---------- */
@@ -89,6 +147,12 @@ export async function createHoliday(schoolId, date, label) {
   const { data, error } = await supabase.from("school_holidays").insert({ school_id: schoolId, date, label: label || null }).select().single();
   if (error) throw error;
   return data;
+}
+export async function bulkCreateHolidays(schoolId, rows) {
+  const payload = rows.filter((r) => r.date?.trim()).map((r) => ({ school_id: schoolId, date: r.date.trim(), label: r.label?.trim() || null }));
+  const { error } = await supabase.from("school_holidays").insert(payload);
+  if (error) throw error;
+  return payload.length;
 }
 export async function deleteHoliday(id) {
   const { error } = await supabase.from("school_holidays").delete().eq("id", id);
