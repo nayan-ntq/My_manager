@@ -376,27 +376,48 @@ export async function updateCorrectionMarks(userId, id, marks, studentId, status
  *  for "remark"). Every change is appended to correction_status_log for a full punctuality history,
  *  while concept_marks holds just the current state for fast display. */
 export async function updateCorrectionConceptMark(userId, id, currentConceptMarks, studentId, concept, status, extra) {
-  const entry = { status, remark: extra?.remark || null, next_date: extra?.next_date || null, marked_at: new Date().toISOString() };
+  const entry = {
+    status, remark: extra?.remark || null, next_date: extra?.next_date || null,
+    quality: extra?.quality || null, rating: extra?.rating ?? null, marked_at: new Date().toISOString(),
+  };
   const conceptMarks = { ...currentConceptMarks };
   conceptMarks[studentId] = { ...(conceptMarks[studentId] || {}), [concept]: entry };
   const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
   if (error) throw error;
   const { error: logErr } = await supabase.from("correction_status_log").insert({
-    user_id: userId, record_id: id, student_id: studentId, concept, status, remark: entry.remark, next_date: entry.next_date,
+    user_id: userId, record_id: id, student_id: studentId, concept, status,
+    remark: entry.remark, next_date: entry.next_date, quality: entry.quality, rating: entry.rating,
   });
   if (logErr) throw logErr;
   return conceptMarks;
 }
-/** Sets every given student's status for one concept in a single write - "mark whole class X", then tap exceptions. */
-export async function bulkSetCorrectionConceptMark(userId, id, currentConceptMarks, studentIds, concept, status) {
-  const entry = { status, remark: null, next_date: null, marked_at: new Date().toISOString() };
+/** Sets every given student's status for one concept in a single write - "mark whole class X", then tap exceptions.
+ *  defaultQuality is passed when bulk-marking a homework concept "done" - every student defaults to Accurate so
+ *  the teacher only has to touch the exceptions afterward. */
+export async function bulkSetCorrectionConceptMark(userId, id, currentConceptMarks, studentIds, concept, status, defaultQuality) {
+  const entry = { status, remark: null, next_date: null, quality: defaultQuality || null, rating: null, marked_at: new Date().toISOString() };
   const conceptMarks = { ...currentConceptMarks };
   for (const sid of studentIds) conceptMarks[sid] = { ...(conceptMarks[sid] || {}), [concept]: entry };
   const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
   if (error) throw error;
   const { error: logErr } = await supabase.from("correction_status_log").insert(
-    studentIds.map((sid) => ({ user_id: userId, record_id: id, student_id: sid, concept, status }))
+    studentIds.map((sid) => ({ user_id: userId, record_id: id, student_id: sid, concept, status, quality: entry.quality }))
   );
+  if (logErr) throw logErr;
+  return conceptMarks;
+}
+/** Sets just the quality tag (+optional rating) for one student's concept, without touching completion status -
+ *  used when the teacher corrects an outlier (e.g. Silly Mistake) after a bulk "done" already defaulted them. */
+export async function updateCorrectionConceptQuality(userId, id, currentConceptMarks, studentId, concept, quality, rating) {
+  const current = currentConceptMarks?.[studentId]?.[concept] || { status: "done" };
+  const entry = { ...current, quality, rating: rating ?? current.rating ?? null, marked_at: new Date().toISOString() };
+  const conceptMarks = { ...currentConceptMarks };
+  conceptMarks[studentId] = { ...(conceptMarks[studentId] || {}), [concept]: entry };
+  const { error } = await supabase.from("correction_records").update({ concept_marks: conceptMarks }).eq("id", id);
+  if (error) throw error;
+  const { error: logErr } = await supabase.from("correction_status_log").insert({
+    user_id: userId, record_id: id, student_id: studentId, concept, status: entry.status, quality, rating: entry.rating,
+  });
   if (logErr) throw logErr;
   return conceptMarks;
 }

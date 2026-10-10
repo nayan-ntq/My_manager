@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { CORRECTION_CONCEPT_TITLES } from "../lib/constants";
+import { CORRECTION_CONCEPT_TITLES, HOMEWORK_QUALITY_TITLES } from "../lib/constants";
 import Spinner from "./Spinner";
 import * as db from "../lib/db";
 
@@ -38,6 +38,7 @@ export default function HistorySheet({ recordId, studentId, studentName, concept
                     {CORRECTION_CONCEPT_TITLES[r.status] || r.status}
                     {r.next_date && <span className="card-sub"> - extended to {r.next_date}</span>}
                     {r.remark && <span className="card-sub"> - "{r.remark}"</span>}
+                    {r.quality && <span className="card-sub"> - {HOMEWORK_QUALITY_TITLES[r.quality] || r.quality}{r.rating ? ` (${r.rating}/5)` : ""}</span>}
                   </div>
                   <div className="card-sub mono">{fmt(r.marked_at)}{i === rows.length - 1 ? "  (current)" : ""}</div>
                 </div>

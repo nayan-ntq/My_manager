@@ -30,6 +30,14 @@ export const CORRECTION_CONCEPT_TITLES = {
 };
 export const CORRECTION_CONCEPT_NEEDS_VALUE = { next_date: "date", remark: "text" };
 
+// per-student, per-concept quality tag on HOMEWORK correction records only (classwork
+// correction just has the completion status above). Defaults to "accurate" once a
+// concept is marked done - the teacher only touches students who had a problem.
+export const HOMEWORK_QUALITY_TAGS = ["accurate", "silly_mistake", "concept_gap", "application_gap"];
+export const HOMEWORK_QUALITY_TITLES = {
+  accurate: "Accurate", silly_mistake: "Silly Mistake", concept_gap: "Concept Gap", application_gap: "Application Gap",
+};
+
 // per-student, per-concept tag cycled on the performance grid
 export const CONCEPT_TAGS = ["blank", "accurate", "application", "silly", "gap"];
 export const CONCEPT_MARKS = { blank: { icon: "minus" }, accurate: { icon: "check" }, application: { text: "App" }, silly: { text: "Silly" }, gap: { text: "Gap" } };

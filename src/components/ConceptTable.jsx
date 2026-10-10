@@ -8,7 +8,7 @@ import { ChevronDown, History } from "lucide-react";
  * one dropdown per cell, plus a "mark all" dropdown per concept column.
  * Student view: pick one student, see all their concepts as a vertical list.
  */
-export default function ConceptTable({ students, concepts, getTag, onSetTag, onBulkSet, tagOptions, extraLabel, onViewHistory }) {
+export default function ConceptTable({ students, concepts, getTag, onSetTag, onBulkSet, tagOptions, extraLabel, onViewHistory, qualityOptions, getQuality, onSetQuality, showQualityFor }) {
   const [view, setView] = useState("table"); // "table" | "student"
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id || "");
 
@@ -50,6 +50,11 @@ export default function ConceptTable({ students, concepts, getTag, onSetTag, onB
                       <select className="concept-select" value={getTag(s.id, c)} onChange={(e) => onSetTag(s.id, c, e.target.value)}>
                         {tagOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
+                      {qualityOptions && showQualityFor?.(s.id, c) && (
+                        <select className="concept-select concept-select-quality" value={getQuality(s.id, c)} onChange={(e) => onSetQuality(s.id, c, e.target.value)}>
+                          {qualityOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      )}
                       {extraLabel?.(s.id, c) && <div className="concept-extra-label">{extraLabel(s.id, c)}</div>}
                     </td>
                   ))}
@@ -73,6 +78,11 @@ export default function ConceptTable({ students, concepts, getTag, onSetTag, onB
                     <select className="concept-select" value={getTag(selectedStudentId, c)} onChange={(e) => onSetTag(selectedStudentId, c, e.target.value)}>
                       {tagOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
+                    {qualityOptions && showQualityFor?.(selectedStudentId, c) && (
+                      <select className="concept-select concept-select-quality" value={getQuality(selectedStudentId, c)} onChange={(e) => onSetQuality(selectedStudentId, c, e.target.value)}>
+                        {qualityOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    )}
                     {extraLabel?.(selectedStudentId, c) && <div className="concept-extra-label">{extraLabel(selectedStudentId, c)}</div>}
                   </div>
                   {onViewHistory && (

@@ -375,6 +375,7 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
   min-width: 82px; cursor: pointer;
 }
 .concept-select-bulk { min-width: 90px; font-weight: 600; }
+.concept-select-quality { margin-top: 4px; border-color: #5B7FDB40; }
 .concept-select:focus { outline: 2px solid #F2790C55; }
 
 .concept-student-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }

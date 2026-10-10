@@ -9,7 +9,7 @@ import HistorySheet from "../components/HistorySheet";
 import CorrectionRegisterTable from "../components/CorrectionRegisterTable";
 import ConceptQuickSheet from "../components/ConceptQuickSheet";
 import { parseCSV, matchStudentName } from "../lib/visionImport";
-import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, CORRECTION_CONCEPT_STATUSES, CORRECTION_CONCEPT_TITLES, CORRECTION_CONCEPT_NEEDS_VALUE, MEDIUM_OPTIONS } from "../lib/constants";
+import { CORRECTION_CODES, CORRECTION_MARKS, CORRECTION_TITLES, CONCEPT_TAGS, CONCEPT_TAG_TITLES, DEFAULT_CORRECTION_TYPES, DEFAULT_TEST_TYPES, CORRECTION_CONCEPT_STATUSES, CORRECTION_CONCEPT_TITLES, CORRECTION_CONCEPT_NEEDS_VALUE, MEDIUM_OPTIONS, HOMEWORK_QUALITY_TAGS, HOMEWORK_QUALITY_TITLES } from "../lib/constants";
 import GridMark from "../components/GridMark";
 import ConfirmDelete from "../components/ConfirmDelete";
 import { toast } from "../components/Toast";
@@ -839,13 +839,17 @@ function CorrectionPanel({ userId, classes, mySchool }) {
     setMarksImport(null);
     toast(`Matched ${matched} of ${rows.length} students`);
   };
+  const isHomeworkRecord = (record) => /home/i.test(record.type || "");
   const setConceptStatus = async (record, concept, studentId, status, extra) => {
     if (CORRECTION_CONCEPT_NEEDS_VALUE[status] && !extra) {
       const studentName = cls.students.find((s) => s.id === studentId)?.name || "";
       setValuePrompt({ record, concept, studentId, studentName, status, needsValue: CORRECTION_CONCEPT_NEEDS_VALUE[status] });
       return;
     }
-    const conceptMarks = await db.updateCorrectionConceptMark(userId, record.id, record.concept_marks || {}, studentId, concept, status, extra);
+    // once a homework concept is marked done, default the student to Accurate - the
+    // teacher only has to touch the ones who actually had a problem
+    const withDefault = status === "done" && isHomeworkRecord(record) && !extra?.quality ? { ...extra, quality: "accurate" } : extra;
+    const conceptMarks = await db.updateCorrectionConceptMark(userId, record.id, record.concept_marks || {}, studentId, concept, status, withDefault);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const confirmValuePrompt = async (extra) => {
@@ -853,9 +857,14 @@ function CorrectionPanel({ userId, classes, mySchool }) {
     setValuePrompt(null);
   };
   const bulkMarkConceptStatus = async (record, concept, status, studentIds) => {
-    const conceptMarks = await db.bulkSetCorrectionConceptMark(userId, record.id, record.concept_marks || {}, studentIds, concept, status);
+    const defaultQuality = status === "done" && isHomeworkRecord(record) ? "accurate" : undefined;
+    const conceptMarks = await db.bulkSetCorrectionConceptMark(userId, record.id, record.concept_marks || {}, studentIds, concept, status, defaultQuality);
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
     toast(`Marked whole class: ${CORRECTION_CONCEPT_TITLES[status]}`);
+  };
+  const setConceptQuality = async (record, concept, studentId, quality) => {
+    const conceptMarks = await db.updateCorrectionConceptQuality(userId, record.id, record.concept_marks || {}, studentId, concept, quality);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, concept_marks: conceptMarks } : r));
   };
   const markTaskDone = async (task) => {
     const record = records.find((r) => r.id === task.recordId);
@@ -1002,9 +1011,14 @@ function CorrectionPanel({ userId, classes, mySchool }) {
                         if (!entry || typeof entry === "string") return null;
                         if (entry.status === "next_date" && entry.next_date) return `-> ${entry.next_date}`;
                         if (entry.status === "remark" && entry.remark) return entry.remark;
+                        if (entry.quality && entry.quality !== "accurate") return HOMEWORK_QUALITY_TITLES[entry.quality];
                         return null;
                       }}
                       onViewHistory={(sid, c) => setHistoryView({ recordId: r.id, studentId: sid, studentName: cls.students.find((s) => s.id === sid)?.name || "", concept: c })}
+                      qualityOptions={isHomeworkRecord(r) ? HOMEWORK_QUALITY_TAGS.map((t) => ({ value: t, label: HOMEWORK_QUALITY_TITLES[t] })) : undefined}
+                      getQuality={(sid, c) => r.concept_marks?.[sid]?.[c]?.quality || "accurate"}
+                      onSetQuality={(sid, c, quality) => setConceptQuality(r, c, sid, quality)}
+                      showQualityFor={(sid, c) => isHomeworkRecord(r) && (r.concept_marks?.[sid]?.[c]?.status || "blank") === "done"}
                     />
                   )}
                 </>
