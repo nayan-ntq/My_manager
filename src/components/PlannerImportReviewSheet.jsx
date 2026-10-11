@@ -4,15 +4,16 @@ import { matchClassName } from "../lib/visionImport";
 
 /** Compact inline editor for one classwork/homework item list within a single import-review card. */
 function ItemListField({ label, items, onChange }) {
-  const addRow = () => onChange([...items, { text: "", important: false }]);
+  const addRow = () => onChange([...items, { exercise: "", text: "", important: false }]);
   const updateRow = (i, patch) => onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
   const removeRow = (i) => onChange(items.filter((_, idx) => idx !== i));
   return (
     <div style={{ marginTop: 8 }}>
-      <div className="field-label" style={{ margin: "8px 0 4px" }}>{label}</div>
+      <div className="field-label" style={{ margin: "8px 0 4px" }}>{label} <span style={{ fontWeight: 500, textTransform: "none" }}>(exercise / question)</span></div>
       {items.map((it, i) => (
         <div key={i} style={{ display: "flex", gap: 5, marginBottom: 4 }}>
-          <input className="input" style={{ fontSize: 12.5, padding: "7px 9px" }} value={it.text} onChange={(e) => updateRow(i, { text: e.target.value })} />
+          <input className="input" style={{ fontSize: 12.5, padding: "7px 9px", flex: "0 0 32%" }} placeholder="Ex 8.3" value={it.exercise || ""} onChange={(e) => updateRow(i, { exercise: e.target.value })} />
+          <input className="input" style={{ fontSize: 12.5, padding: "7px 9px" }} placeholder="Q4" value={it.text} onChange={(e) => updateRow(i, { text: e.target.value })} />
           <button type="button" className={`btn btn-icon concept-item-star ${it.important ? "on" : ""}`} onClick={() => updateRow(i, { important: !it.important })}><Star size={12} fill={it.important ? "currentColor" : "none"} /></button>
           <button type="button" className="btn btn-icon" onClick={() => removeRow(i)}><X size={12} /></button>
         </div>

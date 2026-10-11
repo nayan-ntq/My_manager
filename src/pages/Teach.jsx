@@ -202,26 +202,48 @@ function ClassPicker({ classes, value, onChange }) {
 
 /** Repeatable list of {text, medium, important} rows - used for both Classwork (from
  *  Methodology) and Homework (from Assignment) on a planner entry. */
+/** Classwork/Homework questions nested under their exercise (e.g. "Ex 8.3", "W/S-1") -
+ *  within a chapter: Chapter -> Exercise -> Question. Items with no exercise set yet
+ *  land in a single "Ungrouped" bucket at the top until given one. */
 function ConceptItemList({ label, items, onChange }) {
-  const addRow = () => onChange([...items, { text: "", medium: "", important: false }]);
-  const updateRow = (i, patch) => onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
-  const removeRow = (i) => onChange(items.filter((_, idx) => idx !== i));
+  const exercises = [...new Set(items.map((it) => it.exercise || ""))];
+  if (!exercises.includes("")) exercises.unshift(""); // always offer an "add new exercise" entry point
+
+  const updateRow = (globalIndex, patch) => onChange(items.map((it, idx) => idx === globalIndex ? { ...it, ...patch } : it));
+  const removeRow = (globalIndex) => onChange(items.filter((_, idx) => idx !== globalIndex));
+  const addRowToExercise = (exercise) => onChange([...items, { text: "", medium: "", important: false, exercise }]);
+  const renameExercise = (oldName, newName) => onChange(items.map((it) => (it.exercise || "") === oldName ? { ...it, exercise: newName } : it));
+  const addNewExercise = () => onChange([...items, { text: "", medium: "", important: false, exercise: "New exercise" }]);
 
   return (
     <div style={{ marginTop: 14 }}>
       <div className="field-label" style={{ marginTop: 0 }}>{label}</div>
-      {items.map((it, i) => (
-        <div key={i} className="concept-item-row">
-          <input className="input" placeholder="Question / concept" value={it.text} onChange={(e) => updateRow(i, { text: e.target.value })} />
-          <select className="input concept-item-medium" value={it.medium} onChange={(e) => updateRow(i, { medium: e.target.value })}>
-            <option value="">Medium...</option>
-            {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-          <button type="button" className={`btn btn-icon concept-item-star ${it.important ? "on" : ""}`} title="Mark important" onClick={() => updateRow(i, { important: !it.important })}><Star size={13} fill={it.important ? "currentColor" : "none"} /></button>
-          <button type="button" className="btn btn-icon" onClick={() => removeRow(i)}><X size={13} /></button>
-        </div>
-      ))}
-      <button type="button" className="chip-btn" onClick={addRow}><Plus size={12} /> Add {label.toLowerCase()}</button>
+      {exercises.filter((ex) => ex || items.some((it) => !it.exercise)).map((ex) => {
+        const rowsInGroup = items.map((it, idx) => ({ it, idx })).filter(({ it }) => (it.exercise || "") === ex);
+        if (ex === "" && rowsInGroup.length === 0) return null;
+        return (
+          <div className="concept-exercise-group" key={ex || "_ungrouped"}>
+            {ex !== "" ? (
+              <input className="input concept-exercise-name" value={ex} placeholder="Exercise name" onChange={(e) => renameExercise(ex, e.target.value)} />
+            ) : (
+              <div className="concept-exercise-name concept-exercise-name-placeholder">Ungrouped</div>
+            )}
+            {rowsInGroup.map(({ it, idx }) => (
+              <div key={idx} className="concept-item-row">
+                <input className="input" placeholder="Question (e.g. Q4, B9, whole)" value={it.text} onChange={(e) => updateRow(idx, { text: e.target.value })} />
+                <select className="input concept-item-medium" value={it.medium} onChange={(e) => updateRow(idx, { medium: e.target.value })}>
+                  <option value="">Medium...</option>
+                  {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                <button type="button" className={`btn btn-icon concept-item-star ${it.important ? "on" : ""}`} title="Mark important" onClick={() => updateRow(idx, { important: !it.important })}><Star size={13} fill={it.important ? "currentColor" : "none"} /></button>
+                <button type="button" className="btn btn-icon" onClick={() => removeRow(idx)}><X size={13} /></button>
+              </div>
+            ))}
+            <button type="button" className="chip-btn" style={{ marginTop: 4 }} onClick={() => addRowToExercise(ex)}><Plus size={11} /> Add question</button>
+          </div>
+        );
+      })}
+      <button type="button" className="chip-btn" onClick={addNewExercise}><Plus size={12} /> Add exercise</button>
     </div>
   );
 }
@@ -1577,6 +1599,7 @@ function fmtDateHeading(dateStr) {
  *  entry it came from, so the Planner itself reflects the change immediately. */
 function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
   const [text, setText] = useState(item.text);
+  const [exercise, setExercise] = useState(item.exercise || "");
   const [medium, setMedium] = useState(item.medium || "");
   const [important, setImportant] = useState(!!item.important);
 
@@ -1588,8 +1611,10 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
           <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="card-sub" style={{ marginBottom: 12 }}>{fmtDateHeading(item.date)}{item.chapterNumber ? ` - Ch ${item.chapterNumber}` : ""}{item.chapter ? `: ${item.chapter}` : ""}</div>
-        <div className="field-label" style={{ marginTop: 0 }}>Question / concept</div>
-        <input className="input" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+        <div className="field-label" style={{ marginTop: 0 }}>Exercise</div>
+        <input className="input" placeholder="e.g. Ex 8.3, W/S-1" value={exercise} onChange={(e) => setExercise(e.target.value)} />
+        <div className="field-label">Question / concept</div>
+        <input className="input" value={text} onChange={(e) => setText(e.target.value)} />
         <div className="field-label">Medium</div>
         <select className="input" value={medium} onChange={(e) => setMedium(e.target.value)}>
           <option value="">Not set</option>
@@ -1602,7 +1627,7 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
         <div className="sheet-actions">
           <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), medium: medium || null, important })}>Save</button>
+          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), exercise: exercise.trim() || null, medium: medium || null, important })}>Save</button>
         </div>
       </div>
     </div>
@@ -1619,6 +1644,7 @@ function ConceptsPanel({ userId, classes }) {
   const [search, setSearch] = useState("");
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [editingItem, setEditingItem] = useState(null);
+  const [groupMode, setGroupMode] = useState("chapter"); // chapter | date
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -1645,11 +1671,43 @@ function ConceptsPanel({ userId, classes }) {
     (!search.trim() || it.text.toLowerCase().includes(search.trim().toLowerCase()))
   );
 
-  const groups = [];
-  for (const it of filtered) {
-    let g = groups.find((g) => g.date === it.date);
-    if (!g) { g = { date: it.date, items: [] }; groups.push(g); }
-    g.items.push(it);
+  const renderItemRow = (it, i, showChapter) => (
+    <button type="button" className="cwhw-item-row cwhw-item-row-tappable" key={i} onClick={() => setEditingItem(it)}>
+      <span className="cwhw-item-text">
+        {it.important && <Star size={12} color="#F2790C" fill="#F2790C" style={{ flexShrink: 0 }} />}
+        {it.text}
+      </span>
+      <span className="cwhw-item-meta">
+        <span className={`cwhw-type-chip ${it.type}`}>{it.type === "classwork" ? "CW" : "HW"}</span>
+        {it.medium && <span>{it.medium}</span>}
+        {showChapter && it.chapterNumber && <span>Ch {it.chapterNumber}</span>}
+        <span className="mono">{it.date}</span>
+        <ChevronRight size={14} color="#c9c2b6" />
+      </span>
+    </button>
+  );
+
+  // Chapter -> Exercise -> Questions (the settled hierarchy); or flat by date for recency scanning.
+  let chapterGroups = null, dateGroups = null;
+  if (groupMode === "chapter") {
+    chapterGroups = [];
+    for (const it of filtered) {
+      const chapterKey = it.chapterNumber || it.chapter || "_none";
+      let cg = chapterGroups.find((g) => g.key === chapterKey);
+      if (!cg) { cg = { key: chapterKey, chapterNumber: it.chapterNumber, chapter: it.chapter, exercises: [] }; chapterGroups.push(cg); }
+      const exKey = it.exercise || "";
+      let eg = cg.exercises.find((e) => e.name === exKey);
+      if (!eg) { eg = { name: exKey, items: [] }; cg.exercises.push(eg); }
+      eg.items.push(it);
+    }
+    chapterGroups.sort((a, b) => (a.chapterNumber || "").localeCompare(b.chapterNumber || "", undefined, { numeric: true }));
+  } else {
+    dateGroups = [];
+    for (const it of filtered) {
+      let g = dateGroups.find((g) => g.date === it.date);
+      if (!g) { g = { date: it.date, items: [] }; dateGroups.push(g); }
+      g.items.push(it);
+    }
   }
 
   return (
@@ -1674,28 +1732,36 @@ function ConceptsPanel({ userId, classes }) {
             <Star size={12} fill={importantOnly ? "currentColor" : "none"} /> Important
           </button>
         </div>
-      </div>
-      {groups.length === 0 ? (
-        <div className="card"><div className="card-sub">Nothing matches - items come from what you log in the Planner's Classwork/Homework lists.</div></div>
-      ) : groups.map((g) => (
-        <div className="card" key={g.date} style={{ padding: "12px 0 6px" }}>
-          <div className="cwhw-date-heading">{fmtDateHeading(g.date)} <span className="mono" style={{ fontWeight: 500, color: "#c9c2b6" }}>{g.date}</span></div>
-          {g.items.map((it, i) => (
-            <button type="button" className="cwhw-item-row cwhw-item-row-tappable" key={i} onClick={() => setEditingItem(it)}>
-              <span className="cwhw-item-text">
-                {it.important && <Star size={12} color="#F2790C" fill="#F2790C" style={{ flexShrink: 0 }} />}
-                {it.text}
-              </span>
-              <span className="cwhw-item-meta">
-                <span className={`cwhw-type-chip ${it.type}`}>{it.type === "classwork" ? "CW" : "HW"}</span>
-                {it.medium && <span>{it.medium}</span>}
-                {it.chapterNumber && <span>Ch {it.chapterNumber}</span>}
-                <ChevronRight size={14} color="#c9c2b6" />
-              </span>
-            </button>
-          ))}
+        <div className="concept-view-toggle" style={{ marginTop: 10, marginBottom: 0 }}>
+          <button type="button" className={`view-toggle-btn ${groupMode === "chapter" ? "active" : ""}`} onClick={() => setGroupMode("chapter")}>By chapter</button>
+          <button type="button" className={`view-toggle-btn ${groupMode === "date" ? "active" : ""}`} onClick={() => setGroupMode("date")}>By date</button>
         </div>
-      ))}
+      </div>
+
+      {groupMode === "chapter" ? (
+        chapterGroups.length === 0 ? (
+          <div className="card"><div className="card-sub">Nothing matches - items come from what you log in the Planner's Classwork/Homework lists.</div></div>
+        ) : chapterGroups.map((cg) => (
+          <div className="card" key={cg.key} style={{ padding: "12px 0 6px" }}>
+            <div className="cwhw-date-heading">{cg.chapterNumber ? `Ch ${cg.chapterNumber}` : "No chapter"}{cg.chapter ? `: ${cg.chapter}` : ""}</div>
+            {cg.exercises.map((eg) => (
+              <div key={eg.name || "_ungrouped"} style={{ marginBottom: 4 }}>
+                <div className="cwhw-exercise-heading">{eg.name || "Ungrouped"}</div>
+                {eg.items.map((it, i) => renderItemRow(it, i, false))}
+              </div>
+            ))}
+          </div>
+        ))
+      ) : (
+        dateGroups.length === 0 ? (
+          <div className="card"><div className="card-sub">Nothing matches - items come from what you log in the Planner's Classwork/Homework lists.</div></div>
+        ) : dateGroups.map((g) => (
+          <div className="card" key={g.date} style={{ padding: "12px 0 6px" }}>
+            <div className="cwhw-date-heading">{fmtDateHeading(g.date)} <span className="mono" style={{ fontWeight: 500, color: "#c9c2b6" }}>{g.date}</span></div>
+            {g.items.map((it, i) => renderItemRow(it, i, true))}
+          </div>
+        ))
+      )}
       {editingItem && (
         <ConceptItemEditSheet item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} onDelete={deleteItem} />
       )}

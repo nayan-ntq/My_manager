@@ -149,6 +149,9 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .autofill-hint { font-size:11.5px; color:#5B7FDB; background:#5B7FDB0d; border:1px solid #5B7FDB30; border-radius:8px; padding:7px 10px; margin-top:8px; line-height:1.5; }
 
 /* classwork/homework item rows (Planner) */
+.concept-exercise-group { background:#FAF8F5; border:1px solid #ECE6DE; border-radius:12px; padding:10px; margin-bottom:10px; }
+.concept-exercise-name { font-weight:800; font-size:12.5px; color:#F2790C; border:none; background:none; padding:4px 2px 8px; width:100%; }
+.concept-exercise-name-placeholder { color:#9c9488; font-weight:700; }
 .concept-item-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
 .concept-item-row .input { flex:1; }
 .concept-item-medium { flex: 0 0 104px; min-width:0; }
@@ -166,6 +169,7 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .cwhw-type-chip.classwork { color:#5B7FDB; background:#5B7FDB15; }
 .cwhw-type-chip.homework { color:#F2790C; background:#F2790C15; }
 .cwhw-date-heading { font-size:12px; font-weight:800; color:#7a7266; text-transform:uppercase; letter-spacing:0.02em; padding:2px 16px 8px; display:flex; align-items:baseline; gap:8px; }
+.cwhw-exercise-heading { font-size:11.5px; font-weight:700; color:#F2790C; padding:6px 16px 2px; }
 
 .attendance-row { display:flex; align-items:center; justify-content:space-between; padding:9px 4px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #F1ECE3; }
 .attendance-row:last-child { border-bottom:none; }
