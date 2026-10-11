@@ -19,8 +19,8 @@ this exact shape:
 {"entries": [{"date": "YYYY-MM-DD"|null, "class_label": string|null, "chapter_number": string|null,
 "chapter": string|null, "objectives": string|null, "methodology": string|null, "resources": string|null,
 "assignment": string|null, "reflection": string|null,
-"classwork_items": [{"exercise": string|null, "text": string, "important": boolean}],
-"homework_items": [{"exercise": string|null, "text": string, "important": boolean}]}]}.
+"classwork_items": [{"exercise": string|null, "text": string, "medium": "notebook"|"textbook"|"worksheet"|"folder"|null, "important": boolean}],
+"homework_items": [{"exercise": string|null, "text": string, "medium": "notebook"|"textbook"|"worksheet"|"folder"|null, "important": boolean}]}]}.
 "class_label" is the exact section/class name as written on the page for that entry (e.g. "6A", "7B",
 "Grade 6 - B") - use null only if the page genuinely shows just one undivided class/section throughout.
 ${ctx?.allClassNames?.length ? `This teacher's known classes are: ${JSON.stringify(ctx.allClassNames)} - if a row's label clearly matches one of these (even abbreviated or reordered), use that exact known name as class_label.` : ""}
@@ -28,9 +28,12 @@ classwork_items/homework_items follow a Chapter -> Exercise -> Question structur
 exercise or worksheet name a question belongs to (e.g. "Ex 3.1", "W/S-2", "Ex 8.3") - use null only if
 the page genuinely gives no exercise/worksheet grouping for that item. "text" is just that one question
 within it (e.g. "Q1-4", "B9", "whole" for the entire exercise assigned as one unit) - never fold the
-exercise name into "text". Split out of the Methodology text for classwork_items, the Assignment text for
-homework_items. Set "important" true only if the page itself marks/underlines/stars that item as
-important - otherwise false, never guess. For "date": if the page shows an actual date, use it. If it only shows
+exercise name into "text". "medium" is which physical medium that item is done in, if the page notes one
+(shorthand like "NB"/"nb" means notebook, "TB" means textbook, "WS" or "W/S" means worksheet, "folder" or
+"fd" means folder) - map any such shorthand to exactly one of the four canonical values shown, or null if
+the page doesn't indicate a medium for that item. Split out of the Methodology text for classwork_items,
+the Assignment text for homework_items. Set "important" true only if the page itself marks/underlines/stars
+that item as important - otherwise false, never guess. For "date": if the page shows an actual date, use it. If it only shows
 a day name (Monday, Tuesday...), compute the real date using today = ${ctx?.today || "unknown"} (a
 ${ctx?.todayDow || ""}) and resolve it to the nearest upcoming or matching occurrence of that weekday. If
 no date or day is determinable at all, use null. Use null for any other field you can't read confidently

@@ -326,6 +326,15 @@ function PlannerPanel({ userId, classes, mySchool }) {
     db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
   }, [mySchool.id, cls?.grade]);
 
+  // Continues the ongoing exercise by name (e.g. still on "Ex 8.3") instead of duplicating
+  // yesterday's actual questions - one blank question row ready for today's new ones, under
+  // whichever exercise was last worked on for this chapter, for both classwork and homework.
+  const continuingExercise = (items) => {
+    if (!items?.length) return [];
+    const lastExercise = items[items.length - 1].exercise;
+    return lastExercise ? [{ text: "", medium: "", important: false, exercise: lastExercise }] : [];
+  };
+
   const onChapterNumberBlur = async () => {
     if (!form.chapter_number.trim() || form.chapter.trim()) return; // don't clobber a manually-typed name
     const match = await db.fetchChapterNameForNumber(userId, classId, form.chapter_number);
@@ -333,8 +342,8 @@ function PlannerPanel({ userId, classes, mySchool }) {
       setForm((f) => ({
         ...f,
         chapter: match.chapter || f.chapter,
-        classworkItems: f.classworkItems.length ? f.classworkItems : (match.classwork_items?.length ? match.classwork_items : (match.concepts || []).map((t) => ({ text: t, medium: "", important: false }))),
-        homeworkItems: f.homeworkItems.length ? f.homeworkItems : (match.homework_items?.length ? match.homework_items : (match.exercise_list || []).map((t) => ({ text: t, medium: "", important: false }))),
+        classworkItems: f.classworkItems.length ? f.classworkItems : (match.classwork_items?.length ? continuingExercise(match.classwork_items) : (match.concepts || []).map((t) => ({ text: t, medium: "", important: false }))),
+        homeworkItems: f.homeworkItems.length ? f.homeworkItems : (match.homework_items?.length ? continuingExercise(match.homework_items) : (match.exercise_list || []).map((t) => ({ text: t, medium: "", important: false }))),
       }));
       setAutoFilled(true);
       return;
@@ -1642,6 +1651,8 @@ function ConceptsPanel({ userId, classes }) {
   const [chapterFilter, setChapterFilter] = useState("");
   const [importantOnly, setImportantOnly] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [editingItem, setEditingItem] = useState(null);
   const [groupMode, setGroupMode] = useState("chapter"); // chapter | date
@@ -1668,6 +1679,8 @@ function ConceptsPanel({ userId, classes }) {
     (typeFilter === "all" || it.type === typeFilter) &&
     (!chapterFilter || it.chapterNumber === chapterFilter) &&
     (!importantOnly || it.important) &&
+    (!dateFrom || it.date >= dateFrom) &&
+    (!dateTo || it.date <= dateTo) &&
     (!search.trim() || it.text.toLowerCase().includes(search.trim().toLowerCase()))
   );
 
@@ -1731,6 +1744,11 @@ function ConceptsPanel({ userId, classes }) {
           <button type="button" className={`chip-btn ${importantOnly ? "active" : ""}`} style={importantOnly ? { background: "#F2790C", color: "#fff", borderColor: "transparent" } : undefined} onClick={() => setImportantOnly(!importantOnly)}>
             <Star size={12} fill={importantOnly ? "currentColor" : "none"} /> Important
           </button>
+        </div>
+        <div className="cwhw-filter-row">
+          <div style={{ flex: 1 }}><div className="field-label" style={{ margin: "0 0 4px" }}>From</div><input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div>
+          <div style={{ flex: 1 }}><div className="field-label" style={{ margin: "0 0 4px" }}>To</div><input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div>
+          {(dateFrom || dateTo) && <button type="button" className="btn btn-icon" style={{ alignSelf: "flex-end" }} onClick={() => { setDateFrom(""); setDateTo(""); }}><X size={14} /></button>}
         </div>
         <div className="concept-view-toggle" style={{ marginTop: 10, marginBottom: 0 }}>
           <button type="button" className={`view-toggle-btn ${groupMode === "chapter" ? "active" : ""}`} onClick={() => setGroupMode("chapter")}>By chapter</button>
@@ -1900,35 +1918,63 @@ function SyllabusPanel({ userId, classes, mySchool }) {
 }
 
 const TEACH_SECTIONS = [
-  { value: "planner", label: "Planner", sub: "Chapters, objectives & concepts", icon: ClipboardList, color: "#F2790C" },
-  { value: "concepts", label: "Classwork & Homework", sub: "Every question/concept logged, filterable", icon: Filter, color: "#8B7FC7" },
-  { value: "syllabus", label: "Syllabus", sub: "Chapters per grade, shared across sections", icon: BookOpen, color: "#5B7FDB" },
-  { value: "attendance", label: "Attendance", sub: "Today's roll call, class by class", icon: ClipboardCheck, color: "#2FA88F" },
-  { value: "correction", label: "Correction", sub: "Classwork & homework check-off", icon: Check, color: "#5B7FDB" },
-  { value: "performance", label: "Scores", sub: "Tests, marks & concept breakdown", icon: BarChart3, color: "#8B7FC7" },
-  { value: "absences", label: "Absences", sub: "Who missed what lesson", icon: UserX, color: "#E8556B" },
-  { value: "timetable", label: "Timetable", sub: "Your weekly class schedule", icon: CalendarClock, color: "#D9A441" },
-  { value: "classes", label: "Classes", sub: "Rosters, students & sections", icon: Users, color: "#4FB3C4" },
+  { value: "planner", label: "Planner", sub: "Chapters, objectives & concepts", icon: ClipboardList, color: "#F2790C", category: "Lessons" },
+  { value: "concepts", label: "Classwork & Homework", sub: "Every question/concept logged, filterable", icon: Filter, color: "#8B7FC7", category: "Lessons" },
+  { value: "syllabus", label: "Syllabus", sub: "Chapters per grade, shared across sections", icon: BookOpen, color: "#5B7FDB", category: "Lessons" },
+  { value: "correction", label: "Correction", sub: "Classwork & homework check-off", icon: Check, color: "#5B7FDB", category: "Assessment" },
+  { value: "performance", label: "Scores", sub: "Tests, marks & concept breakdown", icon: BarChart3, color: "#8B7FC7", category: "Assessment" },
+  { value: "attendance", label: "Attendance", sub: "Today's roll call, class by class", icon: ClipboardCheck, color: "#2FA88F", category: "Attendance & schedule" },
+  { value: "absences", label: "Absences", sub: "Who missed what lesson", icon: UserX, color: "#E8556B", category: "Attendance & schedule" },
+  { value: "timetable", label: "Timetable", sub: "Your weekly class schedule", icon: CalendarClock, color: "#D9A441", category: "Attendance & schedule" },
+  { value: "classes", label: "Classes", sub: "Rosters, students & sections", icon: Users, color: "#4FB3C4" }, // no category - stays standalone, used often
 ];
-// shown only for the roles that need them
+// shown only for the roles that need them, always standalone
 const SIGNOFF_SECTION = { value: "signoff", label: "Sign-off", sub: "Review lessons waiting on you", icon: ShieldCheck, color: "#D9A441" };
 const ADMIN_SECTION = { value: "admin", label: "School admin", sub: "Structure, people & invites", icon: Building2, color: "#2A2723" };
+const CATEGORY_ICONS = { "Lessons": ClipboardList, "Assessment": Check, "Attendance & schedule": CalendarClock };
+const CATEGORY_COLORS = { "Lessons": "#F2790C", "Assessment": "#5B7FDB", "Attendance & schedule": "#2FA88F" };
 
 function TeachHome({ classes, sections, onOpen }) {
+  const [openCategory, setOpenCategory] = useState(null);
   const studentCount = classes.reduce((sum, c) => sum + c.students.length, 0);
+
+  const categorized = sections.filter((s) => s.category);
+  const standalone = sections.filter((s) => !s.category);
+  const categoryNames = [...new Set(categorized.map((s) => s.category))];
+
+  const rows = openCategory
+    ? categorized.filter((s) => s.category === openCategory)
+    : [
+        ...categoryNames.map((name) => ({
+          value: `_cat_${name}`, label: name, sub: categorized.filter((s) => s.category === name).map((s) => s.label).join(", "),
+          icon: CATEGORY_ICONS[name] || ClipboardList, color: CATEGORY_COLORS[name] || "#9c9488", isCategory: true,
+        })),
+        ...standalone,
+      ];
+
+  const handleClick = (s) => s.isCategory ? setOpenCategory(s.label) : onOpen(s.value);
+
   return (
     <div className="page">
-      <h2 className="page-title">Teach</h2>
-      <div className="card home-summary-card">
-        <div className="home-summary-num">{classes.length}</div>
-        <div className="home-summary-label">class{classes.length === 1 ? "" : "es"}</div>
-        <div className="home-summary-divider" />
-        <div className="home-summary-num">{studentCount}</div>
-        <div className="home-summary-label">student{studentCount === 1 ? "" : "s"}</div>
-      </div>
+      {openCategory ? (
+        <button type="button" className="section-back" onClick={() => setOpenCategory(null)}>
+          <ChevronLeft size={18} /> {openCategory}
+        </button>
+      ) : (
+        <h2 className="page-title">Teach</h2>
+      )}
+      {!openCategory && (
+        <div className="card home-summary-card">
+          <div className="home-summary-num">{classes.length}</div>
+          <div className="home-summary-label">class{classes.length === 1 ? "" : "es"}</div>
+          <div className="home-summary-divider" />
+          <div className="home-summary-num">{studentCount}</div>
+          <div className="home-summary-label">student{studentCount === 1 ? "" : "s"}</div>
+        </div>
+      )}
       <div className="home-list">
-        {sections.map((s) => (
-          <button type="button" key={s.value} className="home-list-item" onClick={() => onOpen(s.value)}>
+        {rows.map((s) => (
+          <button type="button" key={s.value} className="home-list-item" onClick={() => handleClick(s)}>
             <span className="home-list-icon" style={{ color: s.color, background: `${s.color}17` }}><s.icon size={19} /></span>
             <span className="home-list-text">
               <span className="home-list-title">{s.label}</span>

@@ -5,10 +5,23 @@ export const DEFAULT_TEST_TYPES = [
 
 // medium a classwork/homework item was done in - purely descriptive, shown as a small tag
 export const MEDIUM_OPTIONS = [
-  { value: "folder", label: "Folder" },
-  { value: "book", label: "Book" },
   { value: "notebook", label: "Notebook" },
+  { value: "textbook", label: "Textbook" },
+  { value: "worksheet", label: "Worksheet" },
+  { value: "folder", label: "Folder" },
 ];
+// shorthand a teacher might jot on a physical planner page (NB, TB, W/S, etc.) mapped to
+// the canonical medium above - used to interpret Gemini's photo extraction and any
+// freeform shorthand typed elsewhere, so "nb"/"NB "/"Notebook" all resolve the same way.
+export function normalizeMedium(raw) {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase().replace(/[.\s]/g, "");
+  if (["nb", "notebook", "copy"].includes(v)) return "notebook";
+  if (["tb", "textbook", "text"].includes(v)) return "textbook";
+  if (["ws", "w/s", "worksheet", "sheet"].includes(v)) return "worksheet";
+  if (["folder", "fd"].includes(v)) return "folder";
+  return MEDIUM_OPTIONS.some((m) => m.value === v) ? v : null;
+}
 export const CORRECTION_CODES = ["blank", "done", "ab", "ic", "ns"];
 // icon-based marks (safer + crisper than unicode glyphs, which can render as tofu boxes on some devices)
 export const CORRECTION_MARKS = { blank: { icon: "minus" }, done: { icon: "check" }, ab: { text: "AB" }, ic: { text: "IC" }, ns: { text: "NS" } };
