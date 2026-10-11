@@ -318,15 +318,38 @@ export async function fetchPlannerChapters(userId, classId) {
  *  Classwork & Homework browsing list (date-wise / chapter-wise filterable). */
 export async function fetchClassworkHomework(userId, classId) {
   const { data, error } = await supabase.from("planner_entries")
-    .select("date, chapter_number, chapter, classwork_items, homework_items")
+    .select("id, date, chapter_number, chapter, classwork_items, homework_items")
     .eq("user_id", userId).eq("class_id", classId).order("date", { ascending: false });
   if (error) throw error;
   const rows = [];
   for (const entry of data || []) {
-    for (const item of entry.classwork_items || []) rows.push({ ...item, type: "classwork", date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter });
-    for (const item of entry.homework_items || []) rows.push({ ...item, type: "homework", date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter });
+    (entry.classwork_items || []).forEach((item, i) => rows.push({ ...item, type: "classwork", entryId: entry.id, itemIndex: i, date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter }));
+    (entry.homework_items || []).forEach((item, i) => rows.push({ ...item, type: "homework", entryId: entry.id, itemIndex: i, date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter }));
   }
   return rows;
+}
+/** Edits one classwork/homework item in place on its source planner entry - read-modify-write
+ *  since it's one element of a jsonb array. Keeps the legacy concepts/exercise_list text arrays
+ *  (used for suggestions elsewhere) in sync too. */
+export async function updatePlannerConceptItem(entryId, type, itemIndex, patch) {
+  const col = type === "classwork" ? "classwork_items" : "homework_items";
+  const legacyCol = type === "classwork" ? "concepts" : "exercise_list";
+  const { data, error } = await supabase.from("planner_entries").select(col).eq("id", entryId).single();
+  if (error) throw error;
+  const items = [...(data[col] || [])];
+  items[itemIndex] = { ...items[itemIndex], ...patch };
+  const { error: updErr } = await supabase.from("planner_entries").update({ [col]: items, [legacyCol]: items.map((it) => it.text) }).eq("id", entryId);
+  if (updErr) throw updErr;
+  return items[itemIndex];
+}
+export async function deletePlannerConceptItem(entryId, type, itemIndex) {
+  const col = type === "classwork" ? "classwork_items" : "homework_items";
+  const legacyCol = type === "classwork" ? "concepts" : "exercise_list";
+  const { data, error } = await supabase.from("planner_entries").select(col).eq("id", entryId).single();
+  if (error) throw error;
+  const items = (data[col] || []).filter((_, i) => i !== itemIndex);
+  const { error: updErr } = await supabase.from("planner_entries").update({ [col]: items, [legacyCol]: items.map((it) => it.text) }).eq("id", entryId);
+  if (updErr) throw updErr;
 }
 /** Absences cross-referenced with the concept/chapter taught that day. */
 export async function fetchAbsenceConceptReport(userId, classId, studentsById) {

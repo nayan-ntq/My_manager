@@ -156,13 +156,16 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .concept-item-star.on { color:#F2790C; }
 .cwhw-filter-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .cwhw-filter-row .input { flex:1; min-width:110px; }
-.cwhw-item-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 2px; border-bottom:1px solid #F1ECE3; }
+.cwhw-item-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:11px 16px; border-bottom:1px solid #F1ECE3; }
 .cwhw-item-row:last-child { border-bottom:none; }
-.cwhw-item-text { font-size:13.5px; color:#33302B; display:flex; align-items:center; gap:5px; }
+.cwhw-item-row-tappable { width:100%; background:none; border:none; font-family:inherit; cursor:pointer; text-align:left; transition:background 0.15s; }
+.cwhw-item-row-tappable:active { background:#FAF8F5; }
+.cwhw-item-text { font-size:13.5px; color:#33302B; display:flex; align-items:center; gap:5px; min-width:0; }
 .cwhw-item-meta { font-size:11px; color:#9c9488; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .cwhw-type-chip { font-size:10px; font-weight:800; padding:2px 7px; border-radius:6px; text-transform:uppercase; letter-spacing:0.02em; }
 .cwhw-type-chip.classwork { color:#5B7FDB; background:#5B7FDB15; }
 .cwhw-type-chip.homework { color:#F2790C; background:#F2790C15; }
+.cwhw-date-heading { font-size:12px; font-weight:800; color:#7a7266; text-transform:uppercase; letter-spacing:0.02em; padding:2px 16px 8px; display:flex; align-items:baseline; gap:8px; }
 
 .attendance-row { display:flex; align-items:center; justify-content:space-between; padding:9px 4px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #F1ECE3; }
 .attendance-row:last-child { border-bottom:none; }

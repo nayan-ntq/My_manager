@@ -1564,6 +1564,51 @@ function TimetablePanel({ userId, classes }) {
 
 /** Date-wise / chapter-wise filterable browsing list of every classwork & homework item logged in
  *  the Planner for a class - the "exhaustive list" view, read-only here (edit happens in Planner). */
+function fmtDateHeading(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today - d) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+}
+
+/** Edit (or delete) one classwork/homework item - writes straight back to the planner
+ *  entry it came from, so the Planner itself reflects the change immediately. */
+function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
+  const [text, setText] = useState(item.text);
+  const [medium, setMedium] = useState(item.medium || "");
+  const [important, setImportant] = useState(!!item.important);
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2 className="sheet-title">Edit {item.type === "classwork" ? "classwork" : "homework"}</h2>
+          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="card-sub" style={{ marginBottom: 12 }}>{fmtDateHeading(item.date)}{item.chapterNumber ? ` - Ch ${item.chapterNumber}` : ""}{item.chapter ? `: ${item.chapter}` : ""}</div>
+        <div className="field-label" style={{ marginTop: 0 }}>Question / concept</div>
+        <input className="input" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+        <div className="field-label">Medium</div>
+        <select className="input" value={medium} onChange={(e) => setMedium(e.target.value)}>
+          <option value="">Not set</option>
+          {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+        <div className="toggle-row">
+          <div><div className="toggle-label">Important</div><div className="toggle-sub">Flags this item across the app</div></div>
+          <div className={`switch ${important ? "on" : ""}`} onClick={() => setImportant(!important)}><div className="switch-knob" /></div>
+        </div>
+        <div className="sheet-actions">
+          <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), medium: medium || null, important })}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConceptsPanel({ userId, classes }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
@@ -1573,6 +1618,7 @@ function ConceptsPanel({ userId, classes }) {
   const [importantOnly, setImportantOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [chapterNumbers, setChapterNumbers] = useState([]);
+  const [editingItem, setEditingItem] = useState(null);
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -1581,12 +1627,30 @@ function ConceptsPanel({ userId, classes }) {
   }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
 
+  const saveItem = async (patch) => {
+    await db.updatePlannerConceptItem(editingItem.entryId, editingItem.type, editingItem.itemIndex, patch);
+    setEditingItem(null); load();
+    toast("Updated - reflected in the Planner too");
+  };
+  const deleteItem = async () => {
+    await db.deletePlannerConceptItem(editingItem.entryId, editingItem.type, editingItem.itemIndex);
+    load();
+    toast("Removed");
+  };
+
   const filtered = items.filter((it) =>
     (typeFilter === "all" || it.type === typeFilter) &&
     (!chapterFilter || it.chapterNumber === chapterFilter) &&
     (!importantOnly || it.important) &&
     (!search.trim() || it.text.toLowerCase().includes(search.trim().toLowerCase()))
   );
+
+  const groups = [];
+  for (const it of filtered) {
+    let g = groups.find((g) => g.date === it.date);
+    if (!g) { g = { date: it.date, items: [] }; groups.push(g); }
+    g.items.push(it);
+  }
 
   return (
     <div>
@@ -1611,24 +1675,30 @@ function ConceptsPanel({ userId, classes }) {
           </button>
         </div>
       </div>
-      <div className="card">
-        {filtered.length === 0 ? (
-          <div className="card-sub">Nothing matches - items come from what you log in the Planner's Classwork/Homework lists.</div>
-        ) : filtered.map((it, i) => (
-          <div className="cwhw-item-row" key={i}>
-            <span className="cwhw-item-text">
-              {it.important && <Star size={12} color="#F2790C" fill="#F2790C" />}
-              {it.text}
-            </span>
-            <span className="cwhw-item-meta">
-              <span className={`cwhw-type-chip ${it.type}`}>{it.type === "classwork" ? "CW" : "HW"}</span>
-              {it.medium && <span>{it.medium}</span>}
-              {it.chapterNumber && <span>Ch {it.chapterNumber}</span>}
-              <span className="mono">{it.date}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+      {groups.length === 0 ? (
+        <div className="card"><div className="card-sub">Nothing matches - items come from what you log in the Planner's Classwork/Homework lists.</div></div>
+      ) : groups.map((g) => (
+        <div className="card" key={g.date} style={{ padding: "12px 0 6px" }}>
+          <div className="cwhw-date-heading">{fmtDateHeading(g.date)} <span className="mono" style={{ fontWeight: 500, color: "#c9c2b6" }}>{g.date}</span></div>
+          {g.items.map((it, i) => (
+            <button type="button" className="cwhw-item-row cwhw-item-row-tappable" key={i} onClick={() => setEditingItem(it)}>
+              <span className="cwhw-item-text">
+                {it.important && <Star size={12} color="#F2790C" fill="#F2790C" style={{ flexShrink: 0 }} />}
+                {it.text}
+              </span>
+              <span className="cwhw-item-meta">
+                <span className={`cwhw-type-chip ${it.type}`}>{it.type === "classwork" ? "CW" : "HW"}</span>
+                {it.medium && <span>{it.medium}</span>}
+                {it.chapterNumber && <span>Ch {it.chapterNumber}</span>}
+                <ChevronRight size={14} color="#c9c2b6" />
+              </span>
+            </button>
+          ))}
+        </div>
+      ))}
+      {editingItem && (
+        <ConceptItemEditSheet item={editingItem} onClose={() => setEditingItem(null)} onSave={saveItem} onDelete={deleteItem} />
+      )}
     </div>
   );
 }
