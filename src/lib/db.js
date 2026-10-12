@@ -27,15 +27,11 @@ export async function signOut() { await supabase.auth.signOut(); }
 
 /** Students are shown by roll number (numeric-aware, so "2" sorts before "10") -
  *  falls back to creation order for students with no roll number set. */
+/** Alphabetical by name is the default everywhere - roll numbers aren't guaranteed unique
+ *  (duplicates were colliding under the old roll-number sort), so they're shown as data,
+ *  not used to order the list. Name ties fall back to creation order. */
 function sortStudents(students) {
-  return [...(students || [])].sort((a, b) => {
-    const an = parseFloat(a.roll_no), bn = parseFloat(b.roll_no);
-    const aHas = a.roll_no && !isNaN(an), bHas = b.roll_no && !isNaN(bn);
-    if (aHas && bHas) return an - bn;
-    if (aHas) return -1;
-    if (bHas) return 1;
-    return a.position - b.position;
-  });
+  return [...(students || [])].sort((a, b) => a.name.localeCompare(b.name) || a.position - b.position);
 }
 
 export async function fetchClasses(userId) {

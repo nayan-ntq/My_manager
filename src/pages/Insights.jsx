@@ -38,15 +38,17 @@ function attendancePct(rows, classes) {
  *  Shows attendance% and syllabus coverage% for the class as a whole. */
 function ClassDrilldown({ cls, showTeacherName, onOpenStudent }) {
   const [attendance, setAttendance] = useState([]);
+  const [performance, setPerformance] = useState([]);
   const [syllabus, setSyllabus] = useState([]);
   const [plannerChapterNumbers, setPlannerChapterNumbers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState("name"); // name | roll | attendance | score
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [a, p] = await Promise.all([db.fetchAttendanceForClassAll(cls.id), db.fetchPlannerEntriesForClassAll(cls.id)]);
-      setAttendance(a);
+      const [a, p, perf] = await Promise.all([db.fetchAttendanceForClassAll(cls.id), db.fetchPlannerEntriesForClassAll(cls.id), db.fetchPerformanceRecordsForClassAll(cls.id)]);
+      setAttendance(a); setPerformance(perf);
       setPlannerChapterNumbers([...new Set(p.map((e) => e.chapter_number).filter(Boolean))]);
       if (cls.grade && cls.subject) setSyllabus(await db.fetchSyllabus(cls.school_id, cls.grade, cls.subject));
       setLoading(false);
@@ -60,6 +62,21 @@ function ClassDrilldown({ cls, showTeacherName, onOpenStudent }) {
   const syllabusCount = syllabus.filter((s) => s.kind === "syllabus").length;
   const coveredCount = syllabus.filter((s) => s.kind === "syllabus" && plannerChapterNumbers.includes(s.chapter_number)).length;
 
+  const studentMetric = (s) => {
+    const presentDays = workingDays.filter((a) => (a.present || {})[s.id] !== false).length;
+    const attendancePctForStudent = workingDays.length ? Math.round((presentDays / workingDays.length) * 100) : null;
+    const scores = performance.filter((r) => !(r.absent || {})[s.id] && r.marks[s.id] != null).map((r) => (r.marks[s.id] / r.max_marks) * 100);
+    const latestScore = scores.length ? Math.round(scores[scores.length - 1]) : null;
+    return { attendancePctForStudent, latestScore };
+  };
+
+  const sortedStudents = [...cls.students].sort((a, b) => {
+    if (sortBy === "roll") return (parseFloat(a.roll_no) || 0) - (parseFloat(b.roll_no) || 0) || a.name.localeCompare(b.name);
+    if (sortBy === "attendance") return (studentMetric(b).attendancePctForStudent ?? -1) - (studentMetric(a).attendancePctForStudent ?? -1);
+    if (sortBy === "score") return (studentMetric(b).latestScore ?? -1) - (studentMetric(a).latestScore ?? -1);
+    return a.name.localeCompare(b.name);
+  });
+
   if (loading) return <Spinner label="Loading class..." />;
 
   return (
@@ -69,13 +86,28 @@ function ClassDrilldown({ cls, showTeacherName, onOpenStudent }) {
         <div className="stat-card"><div className="stat-num">{syllabusCount ? `${coveredCount}/${syllabusCount}` : " - "}</div><div className="stat-label">Syllabus covered</div></div>
       </div>
       <div className="card">
-        <div className="card-title">Students (by roll no.)</div>
-        {cls.students.length === 0 ? <div className="card-sub">No students yet.</div> : cls.students.map((s) => (
-          <button type="button" key={s.id} className="marks-row" style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left" }} onClick={() => onOpenStudent(s, cls)}>
-            <span>{s.roll_no ? `${s.roll_no}. ` : ""}{s.name}</span>
-            <ChevronRight size={15} color="#9c9488" />
-          </button>
-        ))}
+        <div className="card-title-row">
+          <div className="card-title" style={{ marginBottom: 0 }}>Students</div>
+          <select className="input" style={{ padding: "6px 8px", fontSize: 12.5, width: "auto" }} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            <option value="name">Name (A-Z)</option>
+            <option value="roll">Roll no.</option>
+            <option value="attendance">Attendance</option>
+            <option value="score">Latest score</option>
+          </select>
+        </div>
+        {sortedStudents.length === 0 ? <div className="card-sub">No students yet.</div> : sortedStudents.map((s) => {
+          const m = studentMetric(s);
+          return (
+            <button type="button" key={s.id} className="marks-row" style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left" }} onClick={() => onOpenStudent(s, cls)}>
+              <span>{s.name}{s.roll_no ? <span className="card-sub"> (roll {s.roll_no})</span> : ""}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {sortBy === "attendance" && <span className="card-sub">{m.attendancePctForStudent ?? "-"}%</span>}
+                {sortBy === "score" && <span className="card-sub">{m.latestScore ?? "-"}%</span>}
+                <ChevronRight size={15} color="#9c9488" />
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

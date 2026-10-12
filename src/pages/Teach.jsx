@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen } from "lucide-react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen, Camera, Loader2, Image as ImageIcon } from "lucide-react";
+import { compressImage } from "../lib/images";
 import { Segmented } from "../components/Shared";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
@@ -786,15 +787,20 @@ function CorrectionPanel({ userId, classes, mySchool }) {
   const [historyView, setHistoryView] = useState(null); // { recordId, studentId, studentName, concept }
   const [recordDetail, setRecordDetail] = useState(null);
   const [conceptQuick, setConceptQuick] = useState(null); // { record, studentId }
+  const [conceptRefs, setConceptRefs] = useState({}); // lowercased concept text -> { questionImage, answer }
+  const [viewingRefImage, setViewingRefImage] = useState(null);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
     if (!classId) return;
-    const [recs, numbers] = await Promise.all([
-      db.fetchCorrectionRecords(userId, classId), db.fetchChapterNumbers(userId, classId),
+    const [recs, numbers, cwhw] = await Promise.all([
+      db.fetchCorrectionRecords(userId, classId), db.fetchChapterNumbers(userId, classId), db.fetchClassworkHomework(userId, classId),
     ]);
     setRecords(recs);
     setChapterNumbers(numbers);
+    const refs = {};
+    for (const it of cwhw) if (it.questionImage || it.answer) refs[it.text.trim().toLowerCase()] = { questionImage: it.questionImage, answer: it.answer };
+    setConceptRefs(refs);
   }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
 
@@ -1012,6 +1018,27 @@ function CorrectionPanel({ userId, classes, mySchool }) {
                   </div>
                   <div className="card-sub mono" style={{ marginBottom: 4 }}>{r.date}{r.chapter_number ? `  |  Ch ${r.chapter_number}` : ""}</div>
                   {r.concepts?.length > 0 && <div className="card-sub" style={{ marginBottom: 10 }}>Covers: {r.concepts.join(", ")}</div>}
+                  {r.concepts?.some((c) => conceptRefs[c.trim().toLowerCase()]) && (
+                    <div className="card" style={{ background: "#FAF8F5" }}>
+                      <div className="card-title">Question reference</div>
+                      {r.concepts.filter((c) => conceptRefs[c.trim().toLowerCase()]).map((c) => {
+                        const ref = conceptRefs[c.trim().toLowerCase()];
+                        return (
+                          <div key={c} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
+                            {ref.questionImage && (
+                              <button type="button" className="photo-thumb" style={{ border: "none", padding: 0, flexShrink: 0 }} onClick={() => setViewingRefImage(ref.questionImage)}>
+                                <img src={ref.questionImage} alt="" />
+                              </button>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 12.5 }}>{c}</div>
+                              {ref.answer && <div className="card-sub" style={{ fontSize: 12 }}>{ref.answer}</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                     <button className="btn btn-ghost" onClick={() => { setRecordDetail(null); setEditingRecord(r); }}>Edit details</button>
                     <ConfirmDelete onConfirm={() => { removeRecord(r.id); setRecordDetail(null); }} size={14} />
@@ -1094,6 +1121,11 @@ function CorrectionPanel({ userId, classes, mySchool }) {
       )}
       {editingTypes && (
         <TypeListEditor title="Checking types" items={correctionTypes} onClose={() => setEditingTypes(false)} onSave={saveTypes} />
+      )}
+      {viewingRefImage && (
+        <div className="overlay" onClick={() => setViewingRefImage(null)} style={{ alignItems: "center", padding: 20 }}>
+          <img src={viewingRefImage} alt="" style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 12 }} onClick={(e) => e.stopPropagation()} />
+        </div>
       )}
     </div>
   );
@@ -1611,6 +1643,20 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
   const [exercise, setExercise] = useState(item.exercise || "");
   const [medium, setMedium] = useState(item.medium || "");
   const [important, setImportant] = useState(!!item.important);
+  const [questionImage, setQuestionImage] = useState(item.questionImage || null);
+  const [answer, setAnswer] = useState(item.answer || "");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try { setQuestionImage(await compressImage(file)); }
+    catch (err) { toast(err.message || "Couldn't read that photo", "error"); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -1629,6 +1675,18 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
           <option value="">Not set</option>
           {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
+        <div className="field-label">Question photo <span style={{ fontWeight: 500, textTransform: "none" }}>(shown while checking)</span></div>
+        {questionImage ? (
+          <div className="photo-thumb photo-thumb-view" style={{ marginBottom: 6 }}>
+            <img src={questionImage} alt="" />
+            <button type="button" onClick={() => setQuestionImage(null)}><X size={11} /></button>
+          </div>
+        ) : (
+          <button type="button" className="photo-add" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? <Loader2 size={16} className="spin-icon" /> : <Camera size={16} />}</button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
+        <div className="field-label">Answer <span style={{ fontWeight: 500, textTransform: "none" }}>(shown while checking)</span></div>
+        <textarea className="input textarea" placeholder="The correct answer, for a quick reference while checking" value={answer} onChange={(e) => setAnswer(e.target.value)} />
         <div className="toggle-row">
           <div><div className="toggle-label">Important</div><div className="toggle-sub">Flags this item across the app</div></div>
           <div className={`switch ${important ? "on" : ""}`} onClick={() => setImportant(!important)}><div className="switch-knob" /></div>
@@ -1636,7 +1694,7 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
         <div className="sheet-actions">
           <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), exercise: exercise.trim() || null, medium: medium || null, important })}>Save</button>
+          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), exercise: exercise.trim() || null, medium: medium || null, important, questionImage, answer: answer.trim() || null })}>Save</button>
         </div>
       </div>
     </div>

@@ -56,13 +56,24 @@ export default function App() {
     setClasses(await db.fetchClasses(session.user.id));
   }, [session?.user?.id]);
 
-  const bootstrapUser = useCallback(async (userId) => {
+  const bootstrapUser = useCallback(async (userId, isRetry = false) => {
     setReady(false); setLoadError(null);
     try {
+      // Right after sign-in there's a brief window where Supabase's client can fire this
+      // first request before the fresh session token is fully attached, which comes back
+      // as a JWT-related auth error even though the session is actually fine a moment
+      // later. Rather than show an error for something that self-resolves, settle the
+      // session explicitly and retry once, silently, before ever surfacing it.
       const [mySchool, cls] = await Promise.all([fetchMySchool(userId), db.fetchClasses(userId)]);
       setSchool(mySchool); setClasses(cls);
       setReady(true);
     } catch (err) {
+      const looksLikeStaleToken = /jwt|token|401/i.test(err.message || err.code || "");
+      if (looksLikeStaleToken && !isRetry) {
+        await db.getSession(); // nudges the client to settle its current token
+        await new Promise((r) => setTimeout(r, 500));
+        return bootstrapUser(userId, true);
+      }
       setLoadError(err.message || "Couldn't load your account");
     }
   }, []);
