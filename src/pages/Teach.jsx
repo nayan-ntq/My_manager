@@ -826,7 +826,19 @@ function CorrectionPanel({ userId, classes, mySchool }) {
   const [conceptQuick, setConceptQuick] = useState(null); // { record, studentId }
   const [conceptRefs, setConceptRefs] = useState({}); // lowercased concept text -> { questionImage, answer }
   const [viewingRefImage, setViewingRefImage] = useState(null);
+  const [syllabusChapters, setSyllabusChapters] = useState([]);
   const cls = classes.find((c) => c.id === classId);
+
+  useEffect(() => {
+    if (!cls?.grade) { setSyllabusChapters([]); return; }
+    db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
+  }, [mySchool.id, cls?.grade, cls?.subject]);
+
+  const addConceptFromSyllabusCorrection = (text) => {
+    const existing = conceptsInput.split(",").map((x) => x.trim()).filter(Boolean);
+    if (existing.includes(text)) return;
+    setConceptsInput([...existing, text].join(", "));
+  };
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -970,7 +982,7 @@ function CorrectionPanel({ userId, classes, mySchool }) {
             <button type="button" className="chip-btn" style={{ marginTop: 8 }} onClick={() => setEditingTypes(true)}>Edit checking types</button>
             <input type="date" className="input" style={{ marginTop: 8 }} value={date} onChange={(e) => setDate(e.target.value)} />
             <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
-              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide chapter & concepts" : "Link a chapter & concepts (optional)"}
+              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide chapter & concepts" : `Link a chapter & concepts (optional)${syllabusChapters.length ? ` - ${syllabusChapters.length} from syllabus` : ""}`}
             </button>
             {showMore && (
               <div className="more-details-body">
@@ -984,6 +996,14 @@ function CorrectionPanel({ userId, classes, mySchool }) {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                     {suggestions.map((s) => <button type="button" key={s} className="chip-btn" onClick={() => addSuggestion(s)}>{s}</button>)}
                   </div>
+                )}
+                {syllabusChapters.length > 0 && (
+                  <>
+                    <div className="field-label">From the syllabus - Grade {cls?.grade} {cls?.subject}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {syllabusChapters.map((c) => <button type="button" key={c.id} className="chip-btn" onClick={() => addConceptFromSyllabusCorrection(c.chapter_name)}>{c.chapter_number ? `Ch ${c.chapter_number}: ` : ""}{c.chapter_name}</button>)}
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -1380,7 +1400,7 @@ function PerformancePanel({ userId, classes, mySchool }) {
             <div className="field-label">Max marks</div>
             <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
             <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
-              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide extra details" : "Chapters & concepts (optional)"}
+              {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide extra details" : `Chapters & concepts (optional)${syllabusChapters.length ? ` - ${syllabusChapters.length} from syllabus` : ""}`}
             </button>
             {showMore && (
               <div className="more-details-body">
