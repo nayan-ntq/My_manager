@@ -313,6 +313,9 @@ function PlannerPanel({ userId, classes, mySchool }) {
   const [autoFilled, setAutoFilled] = useState(false);
   const [importReview, setImportReview] = useState(null); // array of extracted entries, pre-confirm
   const [editingEntry, setEditingEntry] = useState(null);
+  const [sharedEntries, setSharedEntries] = useState([]);
+  const [teacherNames, setTeacherNames] = useState({});
+  const [showShared, setShowShared] = useState(false);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -326,6 +329,20 @@ function PlannerPanel({ userId, classes, mySchool }) {
     if (!cls?.grade) { setSyllabusChapters([]); return; }
     db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
   }, [mySchool.id, cls?.grade]);
+
+  // Grade-wide planner sharing: other teachers' lessons for classes with the same
+  // grade+subject (read-only reference - never editable here).
+  useEffect(() => {
+    if (!cls?.grade || !cls?.subject) { setSharedEntries([]); return; }
+    (async () => {
+      const [shared, members] = await Promise.all([
+        db.fetchSharedPlannerEntries(mySchool.id, cls.grade, cls.subject, classId),
+        school.fetchSchoolMembers(mySchool.id),
+      ]);
+      setSharedEntries(shared);
+      setTeacherNames(Object.fromEntries(members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || "A teacher"])));
+    })();
+  }, [mySchool.id, cls?.grade, cls?.subject, classId]);
 
   // Continues the ongoing exercise by name (e.g. still on "Ex 8.3") instead of duplicating
   // yesterday's actual questions - one blank question row ready for today's new ones, under
@@ -404,6 +421,26 @@ function PlannerPanel({ userId, classes, mySchool }) {
 
   return (
     <div>
+      {sharedEntries.length > 0 && (
+        <div className="card">
+          <button type="button" className="expand-toggle" style={{ paddingTop: 0 }} onClick={() => setShowShared(!showShared)}>
+            {showShared ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Shared lessons - Grade {cls.grade} {cls.subject} ({sharedEntries.length})
+          </button>
+          {showShared && (
+            <div style={{ marginTop: 8 }}>
+              <div className="card-sub" style={{ marginBottom: 8 }}>From other sections teaching the same grade & subject - view only.</div>
+              {sharedEntries.map((e) => (
+                <div className="planner-entry" key={e.id} style={{ paddingBottom: 10, borderBottom: "1px solid #F1ECE3", marginBottom: 10 }}>
+                  <div className="card-sub mono">{e.date} - {e.classes?.name} - {teacherNames[e.classes?.user_id] || "A teacher"}</div>
+                  <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
+                  {e.classwork_items?.length > 0 && <div className="planner-field"><span className="planner-label">Classwork:</span> {e.classwork_items.map((it) => it.text).join(", ")}</div>}
+                  {e.homework_items?.length > 0 && <div className="planner-field"><span className="planner-label">Homework:</span> {e.homework_items.map((it) => it.text).join(", ")}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="card">
         <div className="card-title-row">
           <div className="card-title" style={{ marginBottom: 0 }}>Daily / weekly planner entry</div>

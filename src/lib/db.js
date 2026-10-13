@@ -264,6 +264,20 @@ export async function fetchChapterNumbers(userId, classId) {
   return [...seen];
 }
 
+/** Other teachers' planner entries for classes sharing this grade+subject - the grade-wide
+ *  sharing feature. Read-only by design (RLS only grants SELECT to peers, not write). */
+export async function fetchSharedPlannerEntries(schoolId, grade, subject, excludeClassId) {
+  if (!grade || !subject) return [];
+  const { data, error } = await supabase.from("planner_entries")
+    .select("*, classes!inner(name, user_id, grade, subject, school_id)")
+    .eq("classes.school_id", schoolId).eq("classes.grade", grade).eq("classes.subject", subject)
+    .neq("class_id", excludeClassId)
+    .order("date", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  return data || [];
+}
+
 /* ---------- teaching: attendance ---------- */
 
 export async function fetchAttendance(userId, classId, date) {
