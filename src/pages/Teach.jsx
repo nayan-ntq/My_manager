@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen, Camera, Loader2, Image as ImageIcon } from "lucide-react";
 import { compressImage } from "../lib/images";
+import { resolveLectureDate, expectedLectureNumberToday, currentTerm } from "../lib/lectures";
 import { Segmented } from "../components/Shared";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
@@ -249,11 +250,11 @@ function ConceptItemList({ label, items, onChange }) {
   );
 }
 
-function PlannerEntryEditSheet({ entry, onClose, onSave }) {
+function PlannerEntryEditSheet({ entry, onClose, onSave, onMarkTaught }) {
   const [form, setForm] = useState({
     chapter_number: entry.chapter_number || "", chapter: entry.chapter || "",
     objectives: entry.objectives || "", methodology: entry.methodology || "", resources: entry.resources || "",
-    assignment: entry.assignment || "", reflection: entry.reflection || "",
+    assignment: entry.assignment || "",
     classworkItems: entry.classwork_items?.length ? entry.classwork_items : (entry.concepts || []).map((t) => ({ text: t, medium: "", important: false })),
     homeworkItems: entry.homework_items?.length ? entry.homework_items : (entry.exercise_list || []).map((t) => ({ text: t, medium: "", important: false })),
   });
@@ -264,7 +265,7 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
     onSave({
       chapter_number: form.chapter_number.trim() || null, chapter: form.chapter,
       objectives: form.objectives, methodology: form.methodology, resources: form.resources,
-      assignment: form.assignment, reflection: form.reflection,
+      assignment: form.assignment,
       classwork_items: clean(form.classworkItems), homework_items: clean(form.homeworkItems),
       concepts: clean(form.classworkItems).map((it) => it.text), exercise_list: clean(form.homeworkItems).map((it) => it.text),
     });
@@ -274,9 +275,16 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
-          <h2 className="sheet-title">Edit planner entry</h2>
+          <h2 className="sheet-title">{entry.lecture_number ? `Lecture ${entry.lecture_number}` : "Edit planner entry"}</h2>
           <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
         </div>
+        <div className="field-label" style={{ marginTop: 0 }}>Mark as taught</div>
+        <div className="cat-select">
+          <button type="button" className={`cat-opt ${entry.completion_status === "completed" ? "active" : ""}`} style={{ color: "#2FA88F" }} onClick={() => onMarkTaught(entry, "completed")}>Completed</button>
+          <button type="button" className={`cat-opt ${entry.completion_status === "partial" ? "active" : ""}`} style={{ color: "#F2790C" }} onClick={() => onMarkTaught(entry, "partial")}>Partial</button>
+          <button type="button" className={`cat-opt ${entry.completion_status === "advanced" ? "active" : ""}`} style={{ color: "#5B7FDB" }} onClick={() => onMarkTaught(entry, "advanced")}>Advanced</button>
+        </div>
+        {entry.taught_date && <div className="card-sub" style={{ marginBottom: 6 }}>Taught {entry.taught_date}</div>}
         <div className="row-2">
           <div><div className="field-label">Chapter number</div><input className="input" value={form.chapter_number} onChange={(e) => setForm({ ...form, chapter_number: e.target.value })} /></div>
           <div><div className="field-label">Chapter name</div><input className="input" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} /></div>
@@ -289,8 +297,6 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
         <input className="input" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} />
         <div className="field-label">Assignment</div>
         <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
-        <div className="field-label">Reflection</div>
-        <textarea className="input textarea" value={form.reflection} onChange={(e) => setForm({ ...form, reflection: e.target.value })} />
         <ConceptItemList label="Classwork" items={form.classworkItems} onChange={(items) => setForm({ ...form, classworkItems: items })} />
         <ConceptItemList label="Homework" items={form.homeworkItems} onChange={(items) => setForm({ ...form, homeworkItems: items })} />
         <div className="sheet-actions">
@@ -305,8 +311,8 @@ function PlannerEntryEditSheet({ entry, onClose, onSave }) {
 function PlannerPanel({ userId, classes, mySchool }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
-  const [date, setDate] = useState(todayKey());
-  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", classworkItems: [], homeworkItems: [] });
+  const [lectureNumber, setLectureNumber] = useState("");
+  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", classworkItems: [], homeworkItems: [] });
   const [entries, setEntries] = useState([]);
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [syllabusChapters, setSyllabusChapters] = useState([]);
@@ -316,6 +322,9 @@ function PlannerPanel({ userId, classes, mySchool }) {
   const [sharedEntries, setSharedEntries] = useState([]);
   const [teacherNames, setTeacherNames] = useState({});
   const [showShared, setShowShared] = useState(false);
+  const [timetableSlots, setTimetableSlots] = useState([]);
+  const [terms, setTerms] = useState([]);
+  const [holidays, setHolidays] = useState([]);
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -324,6 +333,24 @@ function PlannerPanel({ userId, classes, mySchool }) {
     setEntries(entryRows); setChapterNumbers(numbers);
   }, [userId, classId]);
   useEffect(() => { load(); }, [load]);
+
+  // Lecture-number resolution: each teacher's own timetable (+ the school's terms and
+  // holidays) determines which real date a given lecture number falls on, and whether
+  // teaching is ahead of or behind where it should be by today.
+  useEffect(() => {
+    if (!mySchool?.id) return;
+    (async () => {
+      const [slots, termRows, holidayRows] = await Promise.all([db.fetchTimetable(userId), db.fetchTerms(mySchool.id), db.fetchHolidays(mySchool.id)]);
+      setTimetableSlots(slots); setTerms(termRows); setHolidays(holidayRows.map((h) => h.date));
+    })();
+  }, [userId, mySchool?.id]);
+
+  const today = new Date();
+  const activeTerm = currentTerm(terms, today);
+  const resolvedDate = activeTerm && lectureNumber ? resolveLectureDate(timetableSlots, classId, Number(lectureNumber), activeTerm.start_date, holidays) : null;
+  const expectedLecture = activeTerm ? expectedLectureNumberToday(timetableSlots, classId, activeTerm.start_date, holidays, today) : null;
+  const latestTaughtLecture = entries.filter((e) => e.taught_date).reduce((max, e) => Math.max(max, e.lecture_number || 0), 0);
+  const aheadBehind = expectedLecture !== null && latestTaughtLecture ? latestTaughtLecture - expectedLecture : null;
 
   useEffect(() => {
     if (!cls?.grade) { setSyllabusChapters([]); return; }
@@ -352,6 +379,23 @@ function PlannerPanel({ userId, classes, mySchool }) {
     const lastExercise = items[items.length - 1].exercise;
     return lastExercise ? [{ text: "", medium: "", important: false, exercise: lastExercise }] : [];
   };
+
+  // If the immediately preceding lecture for this class ran short (marked "partial"),
+  // the new lecture almost certainly continues the same chapter/exercise - prefill from
+  // it automatically rather than waiting for a chapter-number match.
+  const previousLecture = lectureNumber ? entries.find((e) => e.lecture_number === Number(lectureNumber) - 1) : null;
+  useEffect(() => {
+    if (!previousLecture || previousLecture.completion_status !== "partial") return;
+    if (form.chapter.trim()) return; // don't clobber a manually-typed name
+    setForm((f) => ({
+      ...f,
+      chapter_number: previousLecture.chapter_number || "",
+      chapter: previousLecture.chapter || "",
+      classworkItems: f.classworkItems.length ? f.classworkItems : continuingExercise(previousLecture.classwork_items),
+      homeworkItems: f.homeworkItems.length ? f.homeworkItems : continuingExercise(previousLecture.homework_items),
+    }));
+    setAutoFilled(true);
+  }, [lectureNumber]); // eslint-disable-line
 
   const onChapterNumberBlur = async () => {
     if (!form.chapter_number.trim() || form.chapter.trim()) return; // don't clobber a manually-typed name
@@ -383,39 +427,48 @@ function PlannerPanel({ userId, classes, mySchool }) {
     const touchedClasses = new Set();
     for (const row of rows) {
       if (!row.classId || (!row.chapter?.trim() && !row.chapter_number?.trim())) continue;
-      await db.createPlannerEntry(userId, row.classId, row.date, {
+      const entryDate = row.lectureNumber && activeTerm
+        ? (resolveLectureDate(timetableSlots, row.classId, row.lectureNumber, activeTerm.start_date, holidays) || row.date || todayKey())
+        : (row.date || todayKey());
+      await db.createPlannerEntry(userId, row.classId, entryDate, {
         chapter_number: row.chapter_number, chapter: row.chapter || "Untitled lesson",
         objectives: row.objectives, methodology: row.methodology, resources: row.resources,
-        assignment: row.assignment, reflection: row.reflection, concepts: row.concepts,
+        assignment: row.assignment, lecture_number: row.lectureNumber, concepts: row.concepts,
         exercise_list: row.exercise_list, classwork_items: row.classwork_items, homework_items: row.homework_items,
       });
       created++; touchedClasses.add(row.classId);
     }
     const classNames = [...touchedClasses].map((id) => classes.find((c) => c.id === id)?.name).filter(Boolean).join(", ");
-    await db.createImportLog(userId, "planner", classNames, JSON.stringify(rows.map((r) => r.date)), rows.length);
+    await db.createImportLog(userId, "planner", classNames, JSON.stringify(rows.map((r) => r.lectureNumber || r.date)), rows.length);
     setImportReview(null);
     load();
     toast(`Imported ${created} lesson${created === 1 ? "" : "s"}${touchedClasses.size > 1 ? ` across ${touchedClasses.size} classes` : ""}`);
   };
 
   const save = async () => {
-    if (!classId || !form.chapter.trim()) return;
+    if (!classId || !form.chapter.trim() || !lectureNumber) return;
     const clean = (items) => items.map((it) => ({ ...it, text: it.text.trim() })).filter((it) => it.text);
     const classworkClean = clean(form.classworkItems), homeworkClean = clean(form.homeworkItems);
     const payload = {
       chapter_number: form.chapter_number.trim() || null,
       chapter: form.chapter, objectives: form.objectives, methodology: form.methodology,
-      resources: form.resources, assignment: form.assignment, reflection: form.reflection,
+      resources: form.resources, assignment: form.assignment,
+      lecture_number: Number(lectureNumber),
       classwork_items: classworkClean, homework_items: homeworkClean,
       concepts: classworkClean.map((it) => it.text), exercise_list: homeworkClean.map((it) => it.text),
     };
-    await db.createPlannerEntry(userId, classId, date, payload);
-    setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", reflection: "", classworkItems: [], homeworkItems: [] });
-    setAutoFilled(false);
+    await db.createPlannerEntry(userId, classId, resolvedDate || todayKey(), payload);
+    setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", classworkItems: [], homeworkItems: [] });
+    setLectureNumber(""); setAutoFilled(false);
     load();
-    toast("Planner entry saved");
+    toast("Lecture plan saved");
   };
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
+  const markTaught = async (entry, status) => {
+    await db.updatePlannerEntry(entry.id, { taught_date: todayKey(), completion_status: status, date: todayKey() });
+    load();
+    toast(status === "partial" ? "Marked partial - next lecture will continue it" : "Marked taught");
+  };
   const saveEntry = async (id, patch) => { await db.updatePlannerEntry(id, patch); setEditingEntry(null); load(); toast("Planner entry updated"); };
   const submitSignoff = async (id) => { await school.submitForSignoff(id); load(); toast("Sent for sign-off"); };
 
@@ -431,7 +484,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
               <div className="card-sub" style={{ marginBottom: 8 }}>From other sections teaching the same grade & subject - view only.</div>
               {sharedEntries.map((e) => (
                 <div className="planner-entry" key={e.id} style={{ paddingBottom: 10, borderBottom: "1px solid #F1ECE3", marginBottom: 10 }}>
-                  <div className="card-sub mono">{e.date} - {e.classes?.name} - {teacherNames[e.classes?.user_id] || "A teacher"}</div>
+                  <div className="card-sub mono">{e.lecture_number ? `Lecture ${e.lecture_number}` : e.date} - {e.classes?.name} - {teacherNames[e.classes?.user_id] || "A teacher"}</div>
                   <div className="planner-field"><b>{e.chapter_number ? `Ch ${e.chapter_number}: ` : ""}{e.chapter}</b></div>
                   {e.classwork_items?.length > 0 && <div className="planner-field"><span className="planner-label">Classwork:</span> {e.classwork_items.map((it) => it.text).join(", ")}</div>}
                   {e.homework_items?.length > 0 && <div className="planner-field"><span className="planner-label">Homework:</span> {e.homework_items.map((it) => it.text).join(", ")}</div>}
@@ -441,15 +494,32 @@ function PlannerPanel({ userId, classes, mySchool }) {
           )}
         </div>
       )}
+      {activeTerm && expectedLecture !== null && (
+        <div className="card">
+          <div className="card-title">Pace - {cls?.name}</div>
+          {aheadBehind === null ? (
+            <div className="card-sub">Mark a lecture taught to start tracking pace against your timetable.</div>
+          ) : (
+            <div className="card-sub">
+              By today you should be on <b>lecture {expectedLecture}</b>. You've taught up to <b>lecture {latestTaughtLecture}</b> -{" "}
+              {aheadBehind === 0 ? <span style={{ color: "#2FA88F", fontWeight: 700 }}>on track</span>
+                : aheadBehind > 0 ? <span style={{ color: "#2FA88F", fontWeight: 700 }}>{aheadBehind} ahead</span>
+                : <span style={{ color: "#E8556B", fontWeight: 700 }}>{-aheadBehind} behind</span>}.
+            </div>
+          )}
+        </div>
+      )}
       <div className="card">
         <div className="card-title-row">
-          <div className="card-title" style={{ marginBottom: 0 }}>Daily / weekly planner entry</div>
+          <div className="card-title" style={{ marginBottom: 0 }}>New lecture</div>
           <PhotoImportButton kind="planner" context={{ classHint: classes.find((c) => c.id === classId)?.name, allClassNames: classes.map((c) => c.name) }} onResult={applyPhotoImport} />
         </div>
         <div className="field-label">Class</div>
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />
-        <div className="field-label">Date</div>
-        <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div className="field-label">Lecture number</div>
+        <input type="number" min="1" className="input" placeholder="e.g. 12" value={lectureNumber} onChange={(e) => setLectureNumber(e.target.value)} />
+        {resolvedDate && <div className="autofill-hint" style={{ marginTop: 6 }}>Falls on {resolvedDate}, per your timetable{activeTerm ? ` (${activeTerm.name})` : ""}.</div>}
+        {!activeTerm && <div className="card-sub" style={{ marginTop: 4 }}>No active term set (Admin {'\u2192'} Terms) - the date can't be resolved from your timetable yet.</div>}
         <div className="row-2">
           <div>
             <div className="field-label">Chapter number</div>
@@ -472,8 +542,6 @@ function PlannerPanel({ userId, classes, mySchool }) {
         <input className="input" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} />
         <div className="field-label">Assignment</div>
         <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
-        <div className="field-label">Reflection</div>
-        <textarea className="input textarea" value={form.reflection} onChange={(e) => setForm({ ...form, reflection: e.target.value })} />
         <ConceptItemList label="Classwork" items={form.classworkItems} onChange={(items) => setForm({ ...form, classworkItems: items })} />
         <ConceptItemList label="Homework" items={form.homeworkItems} onChange={(items) => setForm({ ...form, homeworkItems: items })} />
         <button className="btn btn-primary" style={{ marginTop: 12, width: "100%" }} onClick={save}><Plus size={14} /> Save entry</button>
@@ -481,8 +549,13 @@ function PlannerPanel({ userId, classes, mySchool }) {
       {entries.map((e) => (
         <div className="card planner-entry" key={e.id}>
           <div className="card-title-row">
-            <div className="card-sub mono">{e.date}</div>
+            <div className="card-sub mono">{e.lecture_number ? `Lecture ${e.lecture_number}` : e.date}{e.taught_date ? ` - taught ${e.taught_date}` : ""}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {e.completion_status && (
+                <span className="badge-mini" style={e.completion_status === "partial" ? { color: "#F2790C", background: "#F2790C15" } : e.completion_status === "advanced" ? { color: "#5B7FDB", background: "#5B7FDB15" } : { color: "#2FA88F", background: "#2FA88F15" }}>
+                  {e.completion_status === "partial" ? "Partial" : e.completion_status === "advanced" ? "Advanced" : "Completed"}
+                </span>
+              )}
               {e.signoff_status && e.signoff_status !== "none" && (
                 <span className={`badge-mini signoff-${e.signoff_status}`}>
                   {e.signoff_status === "pending" ? "Awaiting sign-off" : e.signoff_status === "approved" ? "Approved" : "Sent back"}
@@ -496,7 +569,6 @@ function PlannerPanel({ userId, classes, mySchool }) {
             {e.objectives && <div className="planner-field"><span className="planner-label">Objectives:</span> {e.objectives}</div>}
             {e.methodology && <div className="planner-field"><span className="planner-label">Methodology:</span> {e.methodology}</div>}
             {e.assignment && <div className="planner-field"><span className="planner-label">Assignment:</span> {e.assignment}</div>}
-            {e.reflection && <div className="planner-field"><span className="planner-label">Reflection:</span> {e.reflection}</div>}
             {e.classwork_items?.length > 0 && (
               <div className="planner-field"><span className="planner-label">Classwork:</span> {e.classwork_items.map((it, i) => (
                 <span key={i}>{i > 0 && ", "}{it.important && <Star size={10} style={{ verticalAlign: -1 }} fill="currentColor" />}{it.text}{it.medium && ` (${it.medium})`}</span>
@@ -529,6 +601,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
           entry={editingEntry}
           onClose={() => setEditingEntry(null)}
           onSave={(patch) => saveEntry(editingEntry.id, patch)}
+          onMarkTaught={async (entry, status) => { await markTaught(entry, status); setEditingEntry({ ...entry, taught_date: todayKey(), completion_status: status }); }}
         />
       )}
     </div>

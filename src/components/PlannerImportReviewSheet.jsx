@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Trash2, CalendarClock, Star, Plus } from "lucide-react";
+import { X, Trash2, Hash, Star, Plus } from "lucide-react";
 import { matchClassName } from "../lib/visionImport";
 
 /** Compact inline editor for one classwork/homework item list within a single import-review card. */
@@ -34,7 +34,8 @@ export default function PlannerImportReviewSheet({ entries, classes, defaultClas
   const [rows, setRows] = useState(
     entries.map((e, i) => ({
       key: i,
-      date: e.date || new Date().toISOString().slice(0, 10),
+      lectureNumber: e.lecture_number ?? "",
+      date: e.date || "", // fallback only - used when the page gave a real date instead of a lecture number
       classId: matchClassName(e.class_label, classes)?.id || defaultClassId,
       classLabelGuess: e.class_label || null,
       chapter_number: e.chapter_number || "",
@@ -43,7 +44,6 @@ export default function PlannerImportReviewSheet({ entries, classes, defaultClas
       methodology: e.methodology || "",
       resources: e.resources || "",
       assignment: e.assignment || "",
-      reflection: e.reflection || "",
       classworkItems: e.classwork_items?.length ? e.classwork_items : (e.concepts || []).map((t) => ({ text: t, important: false })),
       homeworkItems: e.homework_items?.length ? e.homework_items : (e.exercise_list || []).map((t) => ({ text: t, important: false })),
     }))
@@ -55,9 +55,10 @@ export default function PlannerImportReviewSheet({ entries, classes, defaultClas
   const confirm = () => {
     const clean = (items) => items.map((it) => ({ ...it, text: it.text.trim() })).filter((it) => it.text);
     onConfirm(rows.map((r) => ({
-      date: r.date, classId: r.classId, chapter_number: r.chapter_number || null, chapter: r.chapter,
+      lectureNumber: r.lectureNumber === "" ? null : Number(r.lectureNumber), date: r.date || null,
+      classId: r.classId, chapter_number: r.chapter_number || null, chapter: r.chapter,
       objectives: r.objectives || null, methodology: r.methodology || null, resources: r.resources || null,
-      assignment: r.assignment || null, reflection: r.reflection || null,
+      assignment: r.assignment || null,
       classwork_items: clean(r.classworkItems), homework_items: clean(r.homeworkItems),
       concepts: clean(r.classworkItems).map((it) => it.text), exercise_list: clean(r.homeworkItems).map((it) => it.text),
     })));
@@ -81,8 +82,8 @@ export default function PlannerImportReviewSheet({ entries, classes, defaultClas
           <div className="import-review-card" key={r.key}>
             <div className="card-title-row">
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <CalendarClock size={14} color="#F2790C" />
-                <input type="date" className="input import-review-date" value={r.date} onChange={(e) => update(r.key, "date", e.target.value)} />
+                <Hash size={14} color="#F2790C" />
+                <input type="number" min="1" className="input import-review-date" placeholder="Lecture #" value={r.lectureNumber} onChange={(e) => update(r.key, "lectureNumber", e.target.value)} />
               </div>
               <button type="button" className="btn btn-icon" onClick={() => remove(r.key)}><Trash2 size={13} /></button>
             </div>
@@ -92,6 +93,12 @@ export default function PlannerImportReviewSheet({ entries, classes, defaultClas
             </select>
             {r.classLabelGuess && !classes.some((c) => c.id === r.classId && matchClassName(r.classLabelGuess, classes)?.id === c.id) && (
               <div className="autofill-hint" style={{ marginTop: 6 }}>Photo showed "{r.classLabelGuess}" - couldn't match it to one of your classes exactly, double-check this one.</div>
+            )}
+            {!r.lectureNumber && (
+              <>
+                <div className="field-label" style={{ margin: "6px 0 4px" }}>Date <span style={{ fontWeight: 500, textTransform: "none" }}>(no lecture number found on the page - set a date instead)</span></div>
+                <input type="date" className="input" value={r.date} onChange={(e) => update(r.key, "date", e.target.value)} />
+              </>
             )}
             <div className="row-2" style={{ marginTop: 8 }}>
               <input className="input" placeholder="Chapter number" value={r.chapter_number} onChange={(e) => update(r.key, "chapter_number", e.target.value)} />
