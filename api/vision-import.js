@@ -8,6 +8,10 @@
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
+// Without this, Vercel kills the function after its default 10s - nowhere near enough
+// for up to 8 images plus retries on a busy model. 60s is the max Hobby plan allows.
+export const config = { maxDuration: 60 };
+
 const PROMPTS = {
   planner: (ctx) => `Read these photo(s) of one or more lesson planner pages - they may list lessons by
 LECTURE NUMBER (e.g. "Lec 12", "L-12", "Period 12", a plain running number per class) rather than by date,
@@ -90,6 +94,40 @@ function stripCodeFence(text) {
   return text.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
 }
 
+const RETRYABLE_STATUSES = new Set([429, 503, 504]);
+const MAX_ATTEMPTS = 3;
+
+/** Gemini's flash models return 429 (rate limited) or 503 ("model is overloaded") fairly
+ *  often under load - these are transient, not real failures, so retry with backoff
+ *  before giving up. Non-retryable errors (bad key, bad request) fail immediately. */
+async function callGeminiWithRetry(url, apiKey, body) {
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let upstream;
+    try {
+      upstream = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+      });
+    } catch (networkErr) {
+      lastError = new Error("Couldn't reach Gemini - check your connection and try again");
+      if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, 600 * attempt)); continue; }
+      throw lastError;
+    }
+    const data = await upstream.json().catch(() => ({}));
+    if (upstream.ok) return data;
+    if (RETRYABLE_STATUSES.has(upstream.status) && attempt < MAX_ATTEMPTS) {
+      lastError = new Error(data?.error?.message || `Gemini is busy (${upstream.status})`);
+      await new Promise((r) => setTimeout(r, 700 * attempt)); // 0.7s, 1.4s backoff
+      continue;
+    }
+    const msg = data?.error?.message || `Gemini API error (${upstream.status})`;
+    throw new Error(RETRYABLE_STATUSES.has(upstream.status) ? `Gemini is busy right now - please try again in a moment (${msg})` : msg);
+  }
+  throw lastError;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
@@ -125,13 +163,7 @@ export default async function handler(req, res) {
     };
     if (isJson) body.generationConfig = { responseMimeType: "application/json" };
 
-    const upstream = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify(body),
-    });
-    const data = await upstream.json();
-    if (!upstream.ok) throw new Error(data?.error?.message || `Gemini API error (${upstream.status})`);
+    const data = await callGeminiWithRetry(url, apiKey, body);
 
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("\n").trim();
     if (!text) throw new Error("Gemini returned an empty response (it may have blocked an image)");

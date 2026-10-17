@@ -21,6 +21,19 @@ import AdminPanel from "../components/AdminPanel";
 import SignoffPanel from "../components/SignoffPanel";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
+/** Turns a structured classwork/homework item list into a readable text summary, grouped
+ *  by exercise - e.g. "Ex 8.3: B9, B10; Ex 8.4: Q1, Q4" - for anything that still reads
+ *  the plain-text methodology/assignment columns (Correction's suggestion chips). */
+function itemsToText(items) {
+  if (!items?.length) return "";
+  const groups = [];
+  for (const it of items) {
+    let g = groups.find((g) => g.exercise === (it.exercise || ""));
+    if (!g) { g = { exercise: it.exercise || "", texts: [] }; groups.push(g); }
+    g.texts.push(it.text);
+  }
+  return groups.map((g) => g.exercise ? `${g.exercise}: ${g.texts.join(", ")}` : g.texts.join(", ")).join("; ");
+}
 
 /* ---------- classes ---------- */
 
@@ -232,7 +245,8 @@ function ConceptItemList({ label, items, onChange }) {
             )}
             {rowsInGroup.map(({ it, idx }) => (
               <div key={idx} className="concept-item-row">
-                <input className="input" placeholder="Question (e.g. Q4, B9, whole)" value={it.text} onChange={(e) => updateRow(idx, { text: e.target.value })} />
+                <button type="button" className={`btn btn-icon concept-item-done ${it.done ? "on" : ""}`} title="Mark this question done" onClick={() => updateRow(idx, { done: !it.done })}><Check size={13} /></button>
+                <input className="input" placeholder="Question (e.g. Q4, B9, whole)" value={it.text} onChange={(e) => updateRow(idx, { text: e.target.value })} style={it.done ? { textDecoration: "line-through", color: "#9c9488" } : undefined} />
                 <select className="input concept-item-medium" value={it.medium} onChange={(e) => updateRow(idx, { medium: e.target.value })}>
                   <option value="">Medium...</option>
                   {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -253,8 +267,7 @@ function ConceptItemList({ label, items, onChange }) {
 function PlannerEntryEditSheet({ entry, onClose, onSave, onMarkTaught }) {
   const [form, setForm] = useState({
     chapter_number: entry.chapter_number || "", chapter: entry.chapter || "",
-    objectives: entry.objectives || "", methodology: entry.methodology || "", resources: entry.resources || "",
-    assignment: entry.assignment || "",
+    objectives: entry.objectives || "", resources: entry.resources || "",
     classworkItems: entry.classwork_items?.length ? entry.classwork_items : (entry.concepts || []).map((t) => ({ text: t, medium: "", important: false })),
     homeworkItems: entry.homework_items?.length ? entry.homework_items : (entry.exercise_list || []).map((t) => ({ text: t, medium: "", important: false })),
   });
@@ -262,12 +275,13 @@ function PlannerEntryEditSheet({ entry, onClose, onSave, onMarkTaught }) {
   const save = () => {
     if (!form.chapter.trim()) return;
     const clean = (items) => items.map((it) => ({ ...it, text: it.text.trim() })).filter((it) => it.text);
+    const classworkClean = clean(form.classworkItems), homeworkClean = clean(form.homeworkItems);
     onSave({
       chapter_number: form.chapter_number.trim() || null, chapter: form.chapter,
-      objectives: form.objectives, methodology: form.methodology, resources: form.resources,
-      assignment: form.assignment,
-      classwork_items: clean(form.classworkItems), homework_items: clean(form.homeworkItems),
-      concepts: clean(form.classworkItems).map((it) => it.text), exercise_list: clean(form.homeworkItems).map((it) => it.text),
+      objectives: form.objectives, methodology: itemsToText(classworkClean), resources: form.resources,
+      assignment: itemsToText(homeworkClean),
+      classwork_items: classworkClean, homework_items: homeworkClean,
+      concepts: classworkClean.map((it) => it.text), exercise_list: homeworkClean.map((it) => it.text),
     });
   };
 
@@ -278,13 +292,20 @@ function PlannerEntryEditSheet({ entry, onClose, onSave, onMarkTaught }) {
           <h2 className="sheet-title">{entry.lecture_number ? `Lecture ${entry.lecture_number}` : "Edit planner entry"}</h2>
           <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
         </div>
-        <div className="field-label" style={{ marginTop: 0 }}>Mark as taught</div>
+        <div className="field-label" style={{ marginTop: 0 }}>Classwork status</div>
         <div className="cat-select">
-          <button type="button" className={`cat-opt ${entry.completion_status === "completed" ? "active" : ""}`} style={{ color: "#2FA88F" }} onClick={() => onMarkTaught(entry, "completed")}>Completed</button>
-          <button type="button" className={`cat-opt ${entry.completion_status === "partial" ? "active" : ""}`} style={{ color: "#F2790C" }} onClick={() => onMarkTaught(entry, "partial")}>Partial</button>
-          <button type="button" className={`cat-opt ${entry.completion_status === "advanced" ? "active" : ""}`} style={{ color: "#5B7FDB" }} onClick={() => onMarkTaught(entry, "advanced")}>Advanced</button>
+          <button type="button" className={`cat-opt ${entry.classwork_status === "completed" ? "active" : ""}`} style={{ color: "#2FA88F" }} onClick={() => onMarkTaught(entry, "classwork", "completed")}>Completed</button>
+          <button type="button" className={`cat-opt ${entry.classwork_status === "partial" ? "active" : ""}`} style={{ color: "#F2790C" }} onClick={() => onMarkTaught(entry, "classwork", "partial")}>Partial</button>
+          <button type="button" className={`cat-opt ${entry.classwork_status === "advanced" ? "active" : ""}`} style={{ color: "#5B7FDB" }} onClick={() => onMarkTaught(entry, "classwork", "advanced")}>Advanced</button>
+        </div>
+        <div className="field-label">Homework status</div>
+        <div className="cat-select">
+          <button type="button" className={`cat-opt ${entry.homework_status === "completed" ? "active" : ""}`} style={{ color: "#2FA88F" }} onClick={() => onMarkTaught(entry, "homework", "completed")}>Completed</button>
+          <button type="button" className={`cat-opt ${entry.homework_status === "partial" ? "active" : ""}`} style={{ color: "#F2790C" }} onClick={() => onMarkTaught(entry, "homework", "partial")}>Partial</button>
+          <button type="button" className={`cat-opt ${entry.homework_status === "advanced" ? "active" : ""}`} style={{ color: "#5B7FDB" }} onClick={() => onMarkTaught(entry, "homework", "advanced")}>Advanced</button>
         </div>
         {entry.taught_date && <div className="card-sub" style={{ marginBottom: 6 }}>Taught {entry.taught_date}</div>}
+        <div className="card-sub" style={{ marginBottom: 10 }}>Tick off each question below as you go, to trace exactly how much work got done.</div>
         <div className="row-2">
           <div><div className="field-label">Chapter number</div><input className="input" value={form.chapter_number} onChange={(e) => setForm({ ...form, chapter_number: e.target.value })} /></div>
           <div><div className="field-label">Chapter name</div><input className="input" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} /></div>
@@ -312,7 +333,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
   const [lectureNumber, setLectureNumber] = useState("");
-  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", classworkItems: [], homeworkItems: [] });
+  const [form, setForm] = useState({ chapter_number: "", chapter: "", objectives: "", resources: "", classworkItems: [], homeworkItems: [] });
   const [entries, setEntries] = useState([]);
   const [chapterNumbers, setChapterNumbers] = useState([]);
   const [syllabusChapters, setSyllabusChapters] = useState([]);
@@ -376,6 +397,8 @@ function PlannerPanel({ userId, classes, mySchool }) {
   // whichever exercise was last worked on for this chapter, for both classwork and homework.
   const continuingExercise = (items) => {
     if (!items?.length) return [];
+    const undone = items.filter((it) => !it.done);
+    if (undone.length) return undone.map((it) => ({ ...it })); // carry the actual unfinished questions forward
     const lastExercise = items[items.length - 1].exercise;
     return lastExercise ? [{ text: "", medium: "", important: false, exercise: lastExercise }] : [];
   };
@@ -451,23 +474,27 @@ function PlannerPanel({ userId, classes, mySchool }) {
     const classworkClean = clean(form.classworkItems), homeworkClean = clean(form.homeworkItems);
     const payload = {
       chapter_number: form.chapter_number.trim() || null,
-      chapter: form.chapter, objectives: form.objectives, methodology: form.methodology,
-      resources: form.resources, assignment: form.assignment,
+      chapter: form.chapter, objectives: form.objectives,
+      // Methodology IS classwork and Assignment IS homework - no separate text field to fill
+      // in, these are just a readable summary of the structured lists, for anything
+      // elsewhere (like Correction's suggestions) that still reads the plain-text columns.
+      methodology: itemsToText(classworkClean), resources: form.resources, assignment: itemsToText(homeworkClean),
       lecture_number: Number(lectureNumber),
       classwork_items: classworkClean, homework_items: homeworkClean,
       concepts: classworkClean.map((it) => it.text), exercise_list: homeworkClean.map((it) => it.text),
     };
     await db.createPlannerEntry(userId, classId, resolvedDate || todayKey(), payload);
-    setForm({ chapter_number: "", chapter: "", objectives: "", methodology: "", resources: "", assignment: "", classworkItems: [], homeworkItems: [] });
+    setForm({ chapter_number: "", chapter: "", objectives: "", resources: "", classworkItems: [], homeworkItems: [] });
     setLectureNumber(""); setAutoFilled(false);
     load();
     toast("Lecture plan saved");
   };
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
-  const markTaught = async (entry, status) => {
-    await db.updatePlannerEntry(entry.id, { taught_date: todayKey(), completion_status: status, date: todayKey() });
+  const markTaught = async (entry, kind, status) => {
+    const statusField = kind === "classwork" ? "classwork_status" : "homework_status";
+    await db.updatePlannerEntry(entry.id, { taught_date: todayKey(), [statusField]: status, date: todayKey() });
     load();
-    toast(status === "partial" ? "Marked partial - next lecture will continue it" : "Marked taught");
+    toast(status === "partial" ? `${kind === "classwork" ? "Classwork" : "Homework"} marked partial - next lecture will continue the unfinished questions` : `${kind === "classwork" ? "Classwork" : "Homework"} marked taught`);
   };
   const saveEntry = async (id, patch) => { await db.updatePlannerEntry(id, patch); setEditingEntry(null); load(); toast("Planner entry updated"); };
   const submitSignoff = async (id) => { await school.submitForSignoff(id); load(); toast("Sent for sign-off"); };
@@ -536,12 +563,8 @@ function PlannerPanel({ userId, classes, mySchool }) {
         {autoFilled && <div className="autofill-hint">Filled in from a previous entry for chapter {form.chapter_number}  -  edit anything as needed.</div>}
         <div className="field-label">Learning objectives</div>
         <textarea className="input textarea" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
-        <div className="field-label">Methodology / activity</div>
-        <textarea className="input textarea" value={form.methodology} onChange={(e) => setForm({ ...form, methodology: e.target.value })} />
         <div className="field-label">Resources</div>
         <input className="input" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} />
-        <div className="field-label">Assignment</div>
-        <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
         <ConceptItemList label="Classwork" items={form.classworkItems} onChange={(items) => setForm({ ...form, classworkItems: items })} />
         <ConceptItemList label="Homework" items={form.homeworkItems} onChange={(items) => setForm({ ...form, homeworkItems: items })} />
         <button className="btn btn-primary" style={{ marginTop: 12, width: "100%" }} onClick={save}><Plus size={14} /> Save entry</button>
@@ -551,9 +574,14 @@ function PlannerPanel({ userId, classes, mySchool }) {
           <div className="card-title-row">
             <div className="card-sub mono">{e.lecture_number ? `Lecture ${e.lecture_number}` : e.date}{e.taught_date ? ` - taught ${e.taught_date}` : ""}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {e.completion_status && (
-                <span className="badge-mini" style={e.completion_status === "partial" ? { color: "#F2790C", background: "#F2790C15" } : e.completion_status === "advanced" ? { color: "#5B7FDB", background: "#5B7FDB15" } : { color: "#2FA88F", background: "#2FA88F15" }}>
-                  {e.completion_status === "partial" ? "Partial" : e.completion_status === "advanced" ? "Advanced" : "Completed"}
+              {e.classwork_status && (
+                <span className="badge-mini" style={e.classwork_status === "partial" ? { color: "#F2790C", background: "#F2790C15" } : e.classwork_status === "advanced" ? { color: "#5B7FDB", background: "#5B7FDB15" } : { color: "#2FA88F", background: "#2FA88F15" }}>
+                  CW: {e.classwork_status === "partial" ? "Partial" : e.classwork_status === "advanced" ? "Advanced" : "Completed"}
+                </span>
+              )}
+              {e.homework_status && (
+                <span className="badge-mini" style={e.homework_status === "partial" ? { color: "#F2790C", background: "#F2790C15" } : e.homework_status === "advanced" ? { color: "#5B7FDB", background: "#5B7FDB15" } : { color: "#2FA88F", background: "#2FA88F15" }}>
+                  HW: {e.homework_status === "partial" ? "Partial" : e.homework_status === "advanced" ? "Advanced" : "Completed"}
                 </span>
               )}
               {e.signoff_status && e.signoff_status !== "none" && (
@@ -601,7 +629,10 @@ function PlannerPanel({ userId, classes, mySchool }) {
           entry={editingEntry}
           onClose={() => setEditingEntry(null)}
           onSave={(patch) => saveEntry(editingEntry.id, patch)}
-          onMarkTaught={async (entry, status) => { await markTaught(entry, status); setEditingEntry({ ...entry, taught_date: todayKey(), completion_status: status }); }}
+          onMarkTaught={async (entry, kind, status) => {
+            await markTaught(entry, kind, status);
+            setEditingEntry({ ...entry, taught_date: todayKey(), [kind === "classwork" ? "classwork_status" : "homework_status"]: status });
+          }}
         />
       )}
     </div>
@@ -1773,6 +1804,7 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
   const [exercise, setExercise] = useState(item.exercise || "");
   const [medium, setMedium] = useState(item.medium || "");
   const [important, setImportant] = useState(!!item.important);
+  const [done, setDone] = useState(!!item.done);
   const [questionImage, setQuestionImage] = useState(item.questionImage || null);
   const [answer, setAnswer] = useState(item.answer || "");
   const [busy, setBusy] = useState(false);
@@ -1818,13 +1850,17 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
         <div className="field-label">Answer <span style={{ fontWeight: 500, textTransform: "none" }}>(shown while checking)</span></div>
         <textarea className="input textarea" placeholder="The correct answer, for a quick reference while checking" value={answer} onChange={(e) => setAnswer(e.target.value)} />
         <div className="toggle-row">
+          <div><div className="toggle-label">Done</div><div className="toggle-sub">Was this question actually covered</div></div>
+          <div className={`switch ${done ? "on" : ""}`} onClick={() => setDone(!done)}><div className="switch-knob" /></div>
+        </div>
+        <div className="toggle-row">
           <div><div className="toggle-label">Important</div><div className="toggle-sub">Flags this item across the app</div></div>
           <div className={`switch ${important ? "on" : ""}`} onClick={() => setImportant(!important)}><div className="switch-knob" /></div>
         </div>
         <div className="sheet-actions">
           <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), exercise: exercise.trim() || null, medium: medium || null, important, questionImage, answer: answer.trim() || null })}>Save</button>
+          <button type="button" className="btn btn-primary" onClick={() => text.trim() && onSave({ text: text.trim(), exercise: exercise.trim() || null, medium: medium || null, important, done, questionImage, answer: answer.trim() || null })}>Save</button>
         </div>
       </div>
     </div>

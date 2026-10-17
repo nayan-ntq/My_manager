@@ -157,6 +157,8 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .concept-item-medium { flex: 0 0 104px; min-width:0; }
 .concept-item-star { color:#c9c2b6; flex-shrink:0; }
 .concept-item-star.on { color:#F2790C; }
+.concept-item-done { color:#c9c2b6; flex-shrink:0; }
+.concept-item-done.on { color:#2FA88F; background:#2FA88F15; }
 .cwhw-filter-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .cwhw-filter-row .input { flex:1; min-width:110px; }
 .cwhw-item-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:11px 16px; border-bottom:1px solid #F1ECE3; }
