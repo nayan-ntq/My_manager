@@ -526,3 +526,11 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .quick-concept-row.status-incomplete { border-color: #F2790C55; background: #F2790C0d; }
 .quick-concept-row.status-absent, .quick-concept-row.status-not_submitted { border-color: #E8556B55; background: #E8556B0d; }
 .quick-concept-row.status-next_date, .quick-concept-row.status-remark { border-color: #8B7FC755; background: #8B7FC70d; }
+
+/* concept student view: prev/next picker + per-student marks header */
+.concept-student-picker { display: flex; gap: 6px; align-items: center; }
+.concept-student-picker .input { flex: 1; }
+.concept-student-picker .btn:disabled { opacity: 0.35; }
+.concept-student-header { margin-top: 10px; padding: 10px 12px; background: #FAF8F5; border: 1px solid #ECE6DE; border-radius: 12px; }
+.concept-student-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.concept-student-header-label { font-size: 12.5px; font-weight: 700; color: #7a7266; }

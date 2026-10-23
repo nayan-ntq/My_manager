@@ -511,13 +511,13 @@ export async function fetchAllPerformanceRecords(userId) {
   if (error) throw error;
   return data || [];
 }
-export async function createPerformanceRecord(userId, classId, title, testType, maxMarks, chapterCount, exercises, concepts, passingMarks) {
+export async function createPerformanceRecord(userId, classId, title, testType, maxMarks, chapterCount, exercises, concepts, passingMarks, examDate) {
   const { data, error } = await supabase.from("performance_records")
     .insert({
       user_id: userId, class_id: classId, title, test_type: testType, max_marks: maxMarks,
       chapter_count: chapterCount || null, exercises: exercises || null,
       concepts: concepts || [], marks: {}, concept_marks: {}, absent: {},
-      passing_marks: passingMarks || null,
+      passing_marks: passingMarks || null, exam_date: examDate || null,
     }).select().single();
   if (error) throw error;
   return data;

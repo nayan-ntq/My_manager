@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronDown, History } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, History } from "lucide-react";
 
 /**
  * Concept-wise tracker used by both Correction (understanding) and
@@ -8,9 +8,12 @@ import { ChevronDown, History } from "lucide-react";
  * one dropdown per cell, plus a "mark all" dropdown per concept column.
  * Student view: pick one student, see all their concepts as a vertical list.
  */
-export default function ConceptTable({ students, concepts, getTag, onSetTag, onBulkSet, tagOptions, extraLabel, onViewHistory, qualityOptions, getQuality, onSetQuality, showQualityFor }) {
+export default function ConceptTable({ students, concepts, getTag, onSetTag, onBulkSet, tagOptions, extraLabel, onViewHistory, qualityOptions, getQuality, onSetQuality, showQualityFor, studentHeader }) {
   const [view, setView] = useState("table"); // "table" | "student"
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id || "");
+
+  const selectedIndex = students.findIndex((s) => s.id === selectedStudentId);
+  const goTo = (i) => { if (students[i]) setSelectedStudentId(students[i].id); };
 
   if (concepts.length === 0) return null;
 
@@ -66,9 +69,14 @@ export default function ConceptTable({ students, concepts, getTag, onSetTag, onB
       ) : (
         <div className="concept-student-view">
           <div className="field-label">Student</div>
-          <select className="input" value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)}>
-            {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <div className="concept-student-picker">
+            <button type="button" className="btn btn-icon" disabled={selectedIndex <= 0} onClick={() => goTo(selectedIndex - 1)} title="Previous student"><ChevronLeft size={16} /></button>
+            <select className="input" value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)}>
+              {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button type="button" className="btn btn-icon" disabled={selectedIndex >= students.length - 1} onClick={() => goTo(selectedIndex + 1)} title="Next student"><ChevronRight size={16} /></button>
+          </div>
+          {studentHeader && <div className="concept-student-header">{studentHeader(selectedStudentId)}</div>}
           <div className="concept-student-list">
             {concepts.map((c) => (
               <div className="concept-student-row" key={c}>

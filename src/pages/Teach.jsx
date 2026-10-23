@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen, Camera, Loader2, Image as ImageIcon } from "lucide-react";
 import { compressImage } from "../lib/images";
+import PlannerEntryEditSheet, { ConceptItemList, itemsToText } from "../components/PlannerEntryEditSheet";
 import { resolveLectureDate, expectedLectureNumberToday, currentTerm } from "../lib/lectures";
 import { Segmented } from "../components/Shared";
 import PhotoImportButton from "../components/PhotoImportButton";
@@ -21,20 +22,6 @@ import AdminPanel from "../components/AdminPanel";
 import SignoffPanel from "../components/SignoffPanel";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
-/** Turns a structured classwork/homework item list into a readable text summary, grouped
- *  by exercise - e.g. "Ex 8.3: B9, B10; Ex 8.4: Q1, Q4" - for anything that still reads
- *  the plain-text methodology/assignment columns (Correction's suggestion chips). */
-function itemsToText(items) {
-  if (!items?.length) return "";
-  const groups = [];
-  for (const it of items) {
-    let g = groups.find((g) => g.exercise === (it.exercise || ""));
-    if (!g) { g = { exercise: it.exercise || "", texts: [] }; groups.push(g); }
-    g.texts.push(it.text);
-  }
-  return groups.map((g) => g.exercise ? `${g.exercise}: ${g.texts.join(", ")}` : g.texts.join(", ")).join("; ");
-}
-
 /* ---------- classes ---------- */
 
 function ClassEditSheet({ cls, onClose, onSave, onDelete }) {
@@ -215,120 +202,6 @@ function ClassPicker({ classes, value, onChange }) {
 
 /* ---------- planner ---------- */
 
-/** Repeatable list of {text, medium, important} rows - used for both Classwork (from
- *  Methodology) and Homework (from Assignment) on a planner entry. */
-/** Classwork/Homework questions nested under their exercise (e.g. "Ex 8.3", "W/S-1") -
- *  within a chapter: Chapter -> Exercise -> Question. Items with no exercise set yet
- *  land in a single "Ungrouped" bucket at the top until given one. */
-function ConceptItemList({ label, items, onChange }) {
-  const exercises = [...new Set(items.map((it) => it.exercise || ""))];
-  if (!exercises.includes("")) exercises.unshift(""); // always offer an "add new exercise" entry point
-
-  const updateRow = (globalIndex, patch) => onChange(items.map((it, idx) => idx === globalIndex ? { ...it, ...patch } : it));
-  const removeRow = (globalIndex) => onChange(items.filter((_, idx) => idx !== globalIndex));
-  const addRowToExercise = (exercise) => onChange([...items, { text: "", medium: "", important: false, exercise }]);
-  const renameExercise = (oldName, newName) => onChange(items.map((it) => (it.exercise || "") === oldName ? { ...it, exercise: newName } : it));
-  const addNewExercise = () => onChange([...items, { text: "", medium: "", important: false, exercise: "New exercise" }]);
-
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div className="field-label" style={{ marginTop: 0 }}>{label}</div>
-      {exercises.filter((ex) => ex || items.some((it) => !it.exercise)).map((ex) => {
-        const rowsInGroup = items.map((it, idx) => ({ it, idx })).filter(({ it }) => (it.exercise || "") === ex);
-        if (ex === "" && rowsInGroup.length === 0) return null;
-        return (
-          <div className="concept-exercise-group" key={ex || "_ungrouped"}>
-            {ex !== "" ? (
-              <input className="input concept-exercise-name" value={ex} placeholder="Exercise name" onChange={(e) => renameExercise(ex, e.target.value)} />
-            ) : (
-              <div className="concept-exercise-name concept-exercise-name-placeholder">Ungrouped</div>
-            )}
-            {rowsInGroup.map(({ it, idx }) => (
-              <div key={idx} className="concept-item-row">
-                <button type="button" className={`btn btn-icon concept-item-done ${it.done ? "on" : ""}`} title="Mark this question done" onClick={() => updateRow(idx, { done: !it.done })}><Check size={13} /></button>
-                <input className="input" placeholder="Question (e.g. Q4, B9, whole)" value={it.text} onChange={(e) => updateRow(idx, { text: e.target.value })} style={it.done ? { textDecoration: "line-through", color: "#9c9488" } : undefined} />
-                <select className="input concept-item-medium" value={it.medium} onChange={(e) => updateRow(idx, { medium: e.target.value })}>
-                  <option value="">Medium...</option>
-                  {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-                <button type="button" className={`btn btn-icon concept-item-star ${it.important ? "on" : ""}`} title="Mark important" onClick={() => updateRow(idx, { important: !it.important })}><Star size={13} fill={it.important ? "currentColor" : "none"} /></button>
-                <button type="button" className="btn btn-icon" onClick={() => removeRow(idx)}><X size={13} /></button>
-              </div>
-            ))}
-            <button type="button" className="chip-btn" style={{ marginTop: 4 }} onClick={() => addRowToExercise(ex)}><Plus size={11} /> Add question</button>
-          </div>
-        );
-      })}
-      <button type="button" className="chip-btn" onClick={addNewExercise}><Plus size={12} /> Add exercise</button>
-    </div>
-  );
-}
-
-function PlannerEntryEditSheet({ entry, onClose, onSave, onMarkTaught }) {
-  const [form, setForm] = useState({
-    chapter_number: entry.chapter_number || "", chapter: entry.chapter || "",
-    objectives: entry.objectives || "", resources: entry.resources || "",
-    classworkItems: entry.classwork_items?.length ? entry.classwork_items : (entry.concepts || []).map((t) => ({ text: t, medium: "", important: false })),
-    homeworkItems: entry.homework_items?.length ? entry.homework_items : (entry.exercise_list || []).map((t) => ({ text: t, medium: "", important: false })),
-  });
-
-  const save = () => {
-    if (!form.chapter.trim()) return;
-    const clean = (items) => items.map((it) => ({ ...it, text: it.text.trim() })).filter((it) => it.text);
-    const classworkClean = clean(form.classworkItems), homeworkClean = clean(form.homeworkItems);
-    onSave({
-      chapter_number: form.chapter_number.trim() || null, chapter: form.chapter,
-      objectives: form.objectives, methodology: itemsToText(classworkClean), resources: form.resources,
-      assignment: itemsToText(homeworkClean),
-      classwork_items: classworkClean, homework_items: homeworkClean,
-      concepts: classworkClean.map((it) => it.text), exercise_list: homeworkClean.map((it) => it.text),
-    });
-  };
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-head">
-          <h2 className="sheet-title">{entry.lecture_number ? `Lecture ${entry.lecture_number}` : "Edit planner entry"}</h2>
-          <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
-        </div>
-        <div className="field-label" style={{ marginTop: 0 }}>Classwork status</div>
-        <div className="cat-select">
-          <button type="button" className={`cat-opt ${entry.classwork_status === "completed" ? "active" : ""}`} style={{ color: "#2FA88F" }} onClick={() => onMarkTaught(entry, "classwork", "completed")}>Completed</button>
-          <button type="button" className={`cat-opt ${entry.classwork_status === "partial" ? "active" : ""}`} style={{ color: "#F2790C" }} onClick={() => onMarkTaught(entry, "classwork", "partial")}>Partial</button>
-          <button type="button" className={`cat-opt ${entry.classwork_status === "advanced" ? "active" : ""}`} style={{ color: "#5B7FDB" }} onClick={() => onMarkTaught(entry, "classwork", "advanced")}>Advanced</button>
-        </div>
-        <div className="field-label">Homework status</div>
-        <div className="cat-select">
-          <button type="button" className={`cat-opt ${entry.homework_status === "completed" ? "active" : ""}`} style={{ color: "#2FA88F" }} onClick={() => onMarkTaught(entry, "homework", "completed")}>Completed</button>
-          <button type="button" className={`cat-opt ${entry.homework_status === "partial" ? "active" : ""}`} style={{ color: "#F2790C" }} onClick={() => onMarkTaught(entry, "homework", "partial")}>Partial</button>
-          <button type="button" className={`cat-opt ${entry.homework_status === "advanced" ? "active" : ""}`} style={{ color: "#5B7FDB" }} onClick={() => onMarkTaught(entry, "homework", "advanced")}>Advanced</button>
-        </div>
-        {entry.taught_date && <div className="card-sub" style={{ marginBottom: 6 }}>Taught {entry.taught_date}</div>}
-        <div className="card-sub" style={{ marginBottom: 10 }}>Tick off each question below as you go, to trace exactly how much work got done.</div>
-        <div className="row-2">
-          <div><div className="field-label">Chapter number</div><input className="input" value={form.chapter_number} onChange={(e) => setForm({ ...form, chapter_number: e.target.value })} /></div>
-          <div><div className="field-label">Chapter name</div><input className="input" value={form.chapter} onChange={(e) => setForm({ ...form, chapter: e.target.value })} /></div>
-        </div>
-        <div className="field-label">Learning objectives</div>
-        <textarea className="input textarea" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
-        <div className="field-label">Methodology / activity</div>
-        <textarea className="input textarea" value={form.methodology} onChange={(e) => setForm({ ...form, methodology: e.target.value })} />
-        <div className="field-label">Resources</div>
-        <input className="input" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} />
-        <div className="field-label">Assignment</div>
-        <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
-        <ConceptItemList label="Classwork" items={form.classworkItems} onChange={(items) => setForm({ ...form, classworkItems: items })} />
-        <ConceptItemList label="Homework" items={form.homeworkItems} onChange={(items) => setForm({ ...form, homeworkItems: items })} />
-        <div className="sheet-actions">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" onClick={save}>Save</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function PlannerPanel({ userId, classes, mySchool }) {
   const [classId, setClassId] = useState(classes[0]?.id || "");
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].id); }, [classes, classId]);
@@ -492,9 +365,18 @@ function PlannerPanel({ userId, classes, mySchool }) {
   const remove = async (id) => { await db.deletePlannerEntry(id); load(); };
   const markTaught = async (entry, kind, status) => {
     const statusField = kind === "classwork" ? "classwork_status" : "homework_status";
+    const label = kind === "classwork" ? "Classwork" : "Homework";
+    if (status === null) {
+      // unmark: just clear this one status - leave the taught date alone, since the other
+      // half (classwork vs homework) may still be marked
+      await db.updatePlannerEntry(entry.id, { [statusField]: null });
+      load();
+      toast(`${label} status cleared`);
+      return;
+    }
     await db.updatePlannerEntry(entry.id, { taught_date: todayKey(), [statusField]: status, date: todayKey() });
     load();
-    toast(status === "partial" ? `${kind === "classwork" ? "Classwork" : "Homework"} marked partial - next lecture will continue the unfinished questions` : `${kind === "classwork" ? "Classwork" : "Homework"} marked taught`);
+    toast(status === "partial" ? `${label} marked partial - next lecture will continue the unfinished questions` : `${label} marked taught`);
   };
   const saveEntry = async (id, patch) => { await db.updatePlannerEntry(id, patch); setEditingEntry(null); load(); toast("Planner entry updated"); };
   const submitSignoff = async (id) => { await school.submitForSignoff(id); load(); toast("Sent for sign-off"); };
@@ -631,7 +513,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
           onSave={(patch) => saveEntry(editingEntry.id, patch)}
           onMarkTaught={async (entry, kind, status) => {
             await markTaught(entry, kind, status);
-            setEditingEntry({ ...entry, taught_date: todayKey(), [kind === "classwork" ? "classwork_status" : "homework_status"]: status });
+            setEditingEntry({ ...entry, ...(status ? { taught_date: todayKey() } : {}), [kind === "classwork" ? "classwork_status" : "homework_status"]: status });
           }}
         />
       )}
@@ -1006,6 +888,12 @@ function CorrectionPanel({ userId, classes, mySchool }) {
     setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
     if (showIncomplete) loadIncomplete();
   };
+  const setOverallStatus = async (record, studentId, code) => {
+    const marks = { ...record.marks, [studentId]: code };
+    await db.updateCorrectionMarks(userId, record.id, marks, studentId, code);
+    setRecords((prev) => prev.map((r) => r.id === record.id ? { ...r, marks } : r));
+    if (showIncomplete) loadIncomplete();
+  };
   const bulkMarkStatus = async (record, code, studentIds) => {
     const marks = { ...record.marks };
     for (const sid of studentIds) marks[sid] = code;
@@ -1084,7 +972,8 @@ function CorrectionPanel({ userId, classes, mySchool }) {
               </select>
             </div>
             <button type="button" className="chip-btn" style={{ marginTop: 8 }} onClick={() => setEditingTypes(true)}>Edit checking types</button>
-            <input type="date" className="input" style={{ marginTop: 8 }} value={date} onChange={(e) => setDate(e.target.value)} />
+            <div className="field-label">Date of correction</div>
+            <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
             <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
               {showMore ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {showMore ? "Hide chapter & concepts" : `Link a chapter & concepts (optional)${syllabusChapters.length ? ` - ${syllabusChapters.length} from syllabus` : ""}`}
             </button>
@@ -1225,6 +1114,14 @@ function CorrectionPanel({ userId, classes, mySchool }) {
                       }}
                       onSetTag={(sid, c, status) => setConceptStatus(r, c, sid, status)}
                       onBulkSet={(c, status) => bulkMarkConceptStatus(r, c, status, cls.students.map((s) => s.id))}
+                      studentHeader={(sid) => (
+                        <div className="concept-student-header-row">
+                          <span className="concept-student-header-label">Overall status</span>
+                          <select className="concept-select" value={r.marks[sid] || "blank"} onChange={(e) => setOverallStatus(r, sid, e.target.value)}>
+                            {CORRECTION_CODES.map((code) => <option key={code} value={code}>{CORRECTION_TITLES[code]}</option>)}
+                          </select>
+                        </div>
+                      )}
                       extraLabel={(sid, c) => {
                         const entry = r.concept_marks?.[sid]?.[c];
                         if (!entry || typeof entry === "string") return null;
@@ -1332,6 +1229,7 @@ function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
   const [title, setTitle] = useState(record.title);
   const [testType, setTestType] = useState(record.test_type);
   const [maxMarks, setMaxMarks] = useState(record.max_marks);
+  const [examDate, setExamDate] = useState(record.exam_date || record.created_at?.slice(0, 10) || "");
   const [chapterCount, setChapterCount] = useState(record.chapter_count ?? "");
   const [exercises, setExercises] = useState(record.exercises || "");
   const [conceptsInput, setConceptsInput] = useState((record.concepts || []).join(", "));
@@ -1351,6 +1249,8 @@ function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
           {!testTypes.some((t) => t.name === testType) && <option value={testType}>{testType}</option>}
           {testTypes.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
         </select>
+        <div className="field-label">Date of exam</div>
+        <input type="date" className="input" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
         <div className="row-2">
           <div><div className="field-label">Max marks</div><input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} /></div>
           <div><div className="field-label">Passing marks</div><div className="input" style={{ color: "#9c9488" }}>{presetPassingMarks ?? "Not set by admin"}</div></div>
@@ -1364,7 +1264,7 @@ function PerformanceRecordEditSheet({ record, testTypes, onClose, onSave }) {
         <div className="sheet-actions">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="btn btn-primary" onClick={() => title.trim() && onSave({
-            title: title.trim(), test_type: testType.trim(), max_marks: Number(maxMarks),
+            title: title.trim(), test_type: testType.trim(), max_marks: Number(maxMarks), exam_date: examDate || null,
             passing_marks: presetPassingMarks ?? null,
             chapter_count: chapterCount === "" ? null : Number(chapterCount),
             exercises: exercises.trim() || null,
@@ -1383,6 +1283,7 @@ function PerformancePanel({ userId, classes, mySchool }) {
   const [testTypes, setTestTypes] = useState(mySchool?.testTypes?.length ? mySchool.testTypes : DEFAULT_TEST_TYPES);
   const isAdmin = mySchool?.role === "school_admin" || mySchool?.role === "super_admin";
   const [title, setTitle] = useState(""); const [testType, setTestType] = useState(testTypes[0]?.name || ""); const [maxMarks, setMaxMarks] = useState(20);
+  const [examDate, setExamDate] = useState(todayKey());
   const [editingTypes, setEditingTypes] = useState(false);
   const presetPassingMarks = testTypes.find((t) => t.name === testType)?.passingMarks;
   const [chapterCount, setChapterCount] = useState("");
@@ -1427,8 +1328,8 @@ function PerformancePanel({ userId, classes, mySchool }) {
     if (concepts.length === 0) {
       concepts = await db.fetchPlannerChapters(userId, classId); // fall back to everything logged in the planner
     }
-    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts, presetPassingMarks ?? null);
-    setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setCreating(false); setShowMore(false);
+    await db.createPerformanceRecord(userId, classId, title, testType, Number(maxMarks), chapterCount ? Number(chapterCount) : null, exercises.trim() || null, concepts, presetPassingMarks ?? null, examDate || null);
+    setExamDate(todayKey()); setTitle(""); setChapterCount(""); setExercises(""); setConceptsInput(""); setCreating(false); setShowMore(false);
     load();
     toast("Test record created");
   };
@@ -1501,6 +1402,8 @@ function PerformancePanel({ userId, classes, mySchool }) {
             </div>
             {testType && <div className="card-sub" style={{ marginTop: 6 }}>Passing marks: {presetPassingMarks ?? "not set by admin"}</div>}
             {isAdmin && <button type="button" className="chip-btn" style={{ marginTop: 8 }} onClick={() => setEditingTypes(true)}>Edit exam types</button>}
+            <div className="field-label">Date of exam</div>
+            <input type="date" className="input" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
             <div className="field-label">Max marks</div>
             <input type="number" className="input" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
             <button type="button" className="more-details-toggle" onClick={() => setShowMore(!showMore)}>
@@ -1554,6 +1457,7 @@ function PerformancePanel({ userId, classes, mySchool }) {
             <div className="card-title-row">
               <div style={{ cursor: "pointer" }} onClick={() => setEditingRecord(r)}>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div>
+                <div className="card-sub mono">{r.exam_date || r.created_at?.slice(0, 10)}</div>
                 <div className="card-sub">Out of {r.max_marks}{r.passing_marks != null ? `  |  pass mark ${r.passing_marks}` : ""}{r.chapter_count ? `  |  ${r.chapter_count} chapters` : ""}</div>
                 {stats && (
                   <div className="card-sub">
@@ -1595,6 +1499,18 @@ function PerformancePanel({ userId, classes, mySchool }) {
                     getTag={(sid, c) => r.concept_marks?.[sid]?.[c] || "blank"}
                     onSetTag={(sid, c, tag) => cycleConceptTag(r, c, sid, tag)}
                     onBulkSet={(c, tag) => bulkMarkConceptTag(r, c, tag, cls.students.map((s) => s.id))}
+                    studentHeader={(sid) => {
+                      const isAbsent = !!(r.absent || {})[sid];
+                      return (
+                        <div className="concept-student-header-row">
+                          <span className="concept-student-header-label">Marks (out of {r.max_marks})</span>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            {!isAbsent && <input type="number" className="input marks-input" max={r.max_marks} value={r.marks[sid] ?? ""} onChange={(e) => setMark(r, sid, e.target.value)} placeholder="-" />}
+                            <button type="button" className={`btn btn-icon absent-toggle ${isAbsent ? "on" : ""}`} onClick={() => toggleAbsent(r, sid)}>AB</button>
+                          </div>
+                        </div>
+                      );
+                    }}
                   />
                 )}
               </>
