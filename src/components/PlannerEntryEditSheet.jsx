@@ -3,9 +3,6 @@ import { Plus, X, Star, Check } from "lucide-react";
 import { MEDIUM_OPTIONS } from "../lib/constants";
 import ConfirmDelete from "./ConfirmDelete";
 
-/** Turns a structured classwork/homework item list into a readable text summary, grouped
- *  by exercise - e.g. "Ex 8.3: B9, B10; Ex 8.4: Q1, Q4" - for anything that still reads
- *  the plain-text methodology/assignment columns (Correction's suggestion chips). */
 export function itemsToText(items) {
   if (!items?.length) return "";
   const groups = [];
@@ -17,10 +14,7 @@ export function itemsToText(items) {
   return groups.map((g) => g.exercise ? `${g.exercise}: ${g.texts.join(", ")}` : g.texts.join(", ")).join("; ");
 }
 
-/** Exercise-group name editor. Edits are buffered locally and only committed on blur/Enter -
- *  committing per keystroke would re-key the whole group on every character (losing focus),
- *  and clearing the name mid-edit would collapse the group into "Ungrouped". */
-function ExerciseNameInput({ name, onRename, placeholder = "Exercise name" }) {
+function ExerciseNameInput({ name, onRename, placeholder }) {
   const [draft, setDraft] = useState(name);
   useEffect(() => { setDraft(name); }, [name]);
   const commit = () => {
@@ -34,21 +28,15 @@ function ExerciseNameInput({ name, onRename, placeholder = "Exercise name" }) {
   );
 }
 
-/** Repeatable list of {text, medium, important} rows - used for both Classwork (from
- *  Methodology) and Homework (from Assignment) on a planner entry. */
-/** Classwork/Homework questions nested under their exercise (e.g. "Ex 8.3", "W/S-1") -
- *  within a chapter: Chapter -> Exercise -> Question. Items with no exercise set yet
- *  land in a single "Ungrouped" bucket at the top until given one. */
 export function ConceptItemList({ label, items, onChange }) {
   const exercises = [...new Set(items.map((it) => it.exercise || ""))];
-  if (!exercises.includes("")) exercises.unshift(""); // always offer an "add new exercise" entry point
+  if (!exercises.includes("")) exercises.unshift("");
 
   const updateRow = (globalIndex, patch) => onChange(items.map((it, idx) => idx === globalIndex ? { ...it, ...patch } : it));
   const removeRow = (globalIndex) => onChange(items.filter((_, idx) => idx !== globalIndex));
   const addRowToExercise = (exercise) => onChange([...items, { text: "", medium: "", important: false, exercise }]);
   const renameExercise = (oldName, newName) => onChange(items.map((it) => (it.exercise || "") === oldName ? { ...it, exercise: newName } : it));
   const removeGroup = (exercise) => onChange(items.filter((it) => (it.exercise || "") !== exercise));
-   const removeGroup = (exercise) => onChange(items.filter((it) => (it.exercise || "") !== exercise));
   const addNewExercise = () => onChange([...items, { text: "", medium: "", important: false, exercise: "New exercise" }]);
 
   return (
@@ -59,15 +47,11 @@ export function ConceptItemList({ label, items, onChange }) {
         if (ex === "" && rowsInGroup.length === 0) return null;
         return (
           <div className="concept-exercise-group" key={ex || "_ungrouped"}>
-            {ex !== "" ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <ExerciseNameInput name={ex} onRename={renameExercise}
                 placeholder={ex === "" ? "Ungrouped - type a name (e.g. Ex 14.1) to group these" : "Exercise name"} />
               <ConfirmDelete onConfirm={() => removeGroup(ex)} size={13} />
             </div>
-            ) : (
-              <div className="concept-exercise-name concept-exercise-name-placeholder">Ungrouped</div>
-            )}
             {rowsInGroup.map(({ it, idx }) => (
               <div key={idx} className="concept-item-row">
                 <button type="button" className={`btn btn-icon concept-item-done ${it.done ? "on" : ""}`} title="Mark this question done" onClick={() => updateRow(idx, { done: !it.done })}><Check size={13} /></button>
