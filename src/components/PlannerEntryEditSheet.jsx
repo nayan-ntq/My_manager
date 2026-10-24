@@ -48,6 +48,7 @@ export function ConceptItemList({ label, items, onChange }) {
   const addRowToExercise = (exercise) => onChange([...items, { text: "", medium: "", important: false, exercise }]);
   const renameExercise = (oldName, newName) => onChange(items.map((it) => (it.exercise || "") === oldName ? { ...it, exercise: newName } : it));
   const removeGroup = (exercise) => onChange(items.filter((it) => (it.exercise || "") !== exercise));
+   const removeGroup = (exercise) => onChange(items.filter((it) => (it.exercise || "") !== exercise));
   const addNewExercise = () => onChange([...items, { text: "", medium: "", important: false, exercise: "New exercise" }]);
 
   return (
@@ -59,10 +60,11 @@ export function ConceptItemList({ label, items, onChange }) {
         return (
           <div className="concept-exercise-group" key={ex || "_ungrouped"}>
             {ex !== "" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <ExerciseNameInput name={ex} onRename={renameExercise} />
-                <ConfirmDelete onConfirm={() => removeGroup(ex)} size={13} />
-              </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <ExerciseNameInput name={ex} onRename={renameExercise}
+                placeholder={ex === "" ? "Ungrouped - type a name (e.g. Ex 14.1) to group these" : "Exercise name"} />
+              <ConfirmDelete onConfirm={() => removeGroup(ex)} size={13} />
+            </div>
             ) : (
               <div className="concept-exercise-name concept-exercise-name-placeholder">Ungrouped</div>
             )}
