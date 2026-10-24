@@ -20,7 +20,7 @@ export function itemsToText(items) {
 /** Exercise-group name editor. Edits are buffered locally and only committed on blur/Enter -
  *  committing per keystroke would re-key the whole group on every character (losing focus),
  *  and clearing the name mid-edit would collapse the group into "Ungrouped". */
-function ExerciseNameInput({ name, onRename }) {
+function ExerciseNameInput({ name, onRename, placeholder = "Exercise name" }) {
   const [draft, setDraft] = useState(name);
   useEffect(() => { setDraft(name); }, [name]);
   const commit = () => {
@@ -29,7 +29,7 @@ function ExerciseNameInput({ name, onRename }) {
     else setDraft(name);
   };
   return (
-    <input className="input concept-exercise-name" value={draft} placeholder="Exercise name" title="Edit to rename this whole group"
+    <input className="input concept-exercise-name" value={draft} placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} />
   );
 }
@@ -141,12 +141,8 @@ export default function PlannerEntryEditSheet({ entry, onClose, onSave, onMarkTa
         </div>
         <div className="field-label">Learning objectives</div>
         <textarea className="input textarea" value={form.objectives} onChange={(e) => setForm({ ...form, objectives: e.target.value })} />
-        <div className="field-label">Methodology / activity</div>
-        <textarea className="input textarea" value={form.methodology} onChange={(e) => setForm({ ...form, methodology: e.target.value })} />
-        <div className="field-label">Resources</div>
+               <div className="field-label">Resources</div>
         <input className="input" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} />
-        <div className="field-label">Assignment</div>
-        <input className="input" value={form.assignment} onChange={(e) => setForm({ ...form, assignment: e.target.value })} />
         <ConceptItemList label="Classwork" items={form.classworkItems} onChange={(items) => setForm({ ...form, classworkItems: items })} />
         <ConceptItemList label="Homework" items={form.homeworkItems} onChange={(items) => setForm({ ...form, homeworkItems: items })} />
         <div className="sheet-actions">
