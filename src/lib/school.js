@@ -179,3 +179,65 @@ export async function reviewSignoff(id, approve, note, reviewerId) {
   }).eq("id", id);
   if (error) throw error;
 }
+
+
+/* ---------- school structure: grades, sections, subjects ---------- */
+
+export async function fetchStructure(schoolId) {
+  const [g, s, sub, ss] = await Promise.all([
+    supabase.from("grades").select("*").eq("school_id", schoolId),
+    supabase.from("sections").select("*").eq("school_id", schoolId),
+    supabase.from("subjects").select("*").eq("school_id", schoolId),
+    supabase.from("section_subjects").select("*").eq("school_id", schoolId),
+  ]);
+  for (const r of [g, s, sub, ss]) if (r.error) throw r.error;
+  return { grades: g.data || [], sections: s.data || [], subjects: sub.data || [], sectionSubjects: ss.data || [] };
+}
+export async function addGrade(schoolId, name) {
+  const { error } = await supabase.from("grades").insert({ school_id: schoolId, name });
+  if (error) throw error;
+}
+export async function deleteGrade(id) {
+  const { error } = await supabase.from("grades").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function addSubject(schoolId, name) {
+  const { error } = await supabase.from("subjects").insert({ school_id: schoolId, name });
+  if (error) throw error;
+}
+export async function deleteSubject(id) {
+  const { error } = await supabase.from("subjects").delete().eq("id", id);
+  if (error) throw error;
+}
+/** Adds a section; if copyFromSectionId is given, the new section gets the same subjects. */
+export async function addSection(schoolId, gradeId, name, copyFromSectionId) {
+  const { data: sec, error } = await supabase.from("sections").insert({ school_id: schoolId, grade_id: gradeId, name }).select().single();
+  if (error) throw error;
+  if (copyFromSectionId) {
+    const { data: rows, error: e2 } = await supabase.from("section_subjects").select("subject_id").eq("section_id", copyFromSectionId);
+    if (e2) throw e2;
+    if (rows?.length) {
+      const { error: e3 } = await supabase.from("section_subjects").insert(rows.map((r) => ({ school_id: schoolId, section_id: sec.id, subject_id: r.subject_id })));
+      if (e3) throw e3;
+    }
+  }
+  return sec;
+}
+export async function deleteSection(id) {
+  const { error } = await supabase.from("sections").delete().eq("id", id);
+  if (error) throw error;
+}
+/** Turns one subject on or off for a list of sections at once. */
+export async function setSubjectForSections(schoolId, sectionIds, subjectId, on) {
+  if (!sectionIds.length) return;
+  if (on) {
+    const { error } = await supabase.from("section_subjects").upsert(
+      sectionIds.map((id) => ({ school_id: schoolId, section_id: id, subject_id: subjectId })),
+      { onConflict: "section_id,subject_id", ignoreDuplicates: true }
+    );
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("section_subjects").delete().in("section_id", sectionIds).eq("subject_id", subjectId);
+    if (error) throw error;
+  }
+}
