@@ -241,3 +241,10 @@ export async function setSubjectForSections(schoolId, sectionIds, subjectId, on)
     if (error) throw error;
   }
 }
+
+
+/** Assign (or change) the teacher for one section + subject. Coordinator and above only. */
+export async function assignTeacher(sectionId, subjectId, teacherId) {
+  const { error } = await supabase.rpc("assign_class_teacher", { p_section_id: sectionId, p_subject_id: subjectId, p_teacher_id: teacherId });
+  if (error) throw new Error(error.message);
+}
