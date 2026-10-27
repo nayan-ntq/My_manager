@@ -196,7 +196,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
 }
 
 function ClassPicker({ classes, value, onChange }) {
-  if (classes.length === 0) return <div className="empty">Add a class first, in the Classes tab.</div>;
+  if (classes.length === 0) return <div className="empty">No classes assigned to you yet - ask your coordinator.</div>;
   return <select className="input" value={value || ""} onChange={(e) => onChange(e.target.value)}>{classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>;
 }
 
@@ -2133,8 +2133,9 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
   const canReview = role === "coordinator" || role === "school_admin" || role === "super_admin";
   const canAdmin = role === "school_admin" || role === "super_admin";
 
-  const sections = [
-    ...TEACH_SECTIONS,
+    const sections = [
+    // only coordinator and above manage classes and rosters; teachers work from the planner
+    ...TEACH_SECTIONS.filter((s) => s.value !== "classes" || canReview),
     ...(canReview ? [SIGNOFF_SECTION] : []),
     ...(canAdmin ? [ADMIN_SECTION] : []),
   ];
