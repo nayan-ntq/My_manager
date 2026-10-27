@@ -8,6 +8,7 @@ import * as db from "../lib/db";
 import { computeWorkingDays, WEEKDAY_LABELS } from "../lib/terms";
 import PhotoImportButton from "./PhotoImportButton";
 import CsvReviewSheet from "./CsvReviewSheet";
+import StructurePanel from "./StructurePanel";
 
 /* ---------- terms + holidays (admin sets dates, everyone can see working days) ---------- */
 
@@ -461,7 +462,7 @@ export default function AdminPanel({ userId, schoolId, classes, reloadClasses })
         ]}
         value={sub} onChange={setSub}
       />
-      {sub === "hierarchy" && <HierarchyTab schoolId={schoolId} classes={classes} reloadClasses={reloadClasses} />}
+      {sub === "hierarchy" && <StructurePanel schoolId={schoolId} />}
       {sub === "roster" && <RosterTab schoolId={schoolId} divisions={divisions} />}
       {sub === "invites" && <InvitesTab schoolId={schoolId} userId={userId} divisions={divisions} />}
       {sub === "terms" && <TermsTab schoolId={schoolId} canEdit={true} />}
