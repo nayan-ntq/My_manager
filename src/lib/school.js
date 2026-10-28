@@ -11,7 +11,7 @@ import { supabase } from "./supabaseClient";
 export async function fetchMySchool(userId) {
   const { data, error } = await supabase
     .from("school_members")
-    .select("role, division_id, schools(id, name, correction_types, test_types)")
+    .select("role, division_id, grade_id, schools(id, name, correction_types, test_types)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -19,7 +19,7 @@ export async function fetchMySchool(userId) {
   if (error) throw error;
   if (!data?.schools) return null;
   return {
-    id: data.schools.id, name: data.schools.name, role: data.role, divisionId: data.division_id,
+    id: data.schools.id, name: data.schools.name, role: data.role, divisionId: data.division_id, gradeId: data.grade_id,
     correctionTypes: data.schools.correction_types || [], testTypes: data.schools.test_types || [],
   };
 }
@@ -105,8 +105,8 @@ export async function fetchSchoolMembers(schoolId) {
   if (error) throw error;
   return data || [];
 }
-export async function updateMemberRole(memberId, role, divisionId) {
-  const { error } = await supabase.from("school_members").update({ role, division_id: divisionId || null }).eq("id", memberId);
+export async function updateMemberRole(memberId, role, gradeId) {
+  const { error } = await supabase.from("school_members").update({ role, grade_id: role === "coordinator" ? (gradeId || null) : null }).eq("id", memberId);
   if (error) throw error;
 }
 /** Sets a person's display name - an admin can do this for anyone in their school, or a person for themself. */
@@ -139,15 +139,15 @@ function generateInviteCode() {
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
 }
-export async function createInvite(schoolId, createdBy, role, divisionId, maxUses = 1) {
+export async function createInvite(schoolId, createdBy, role, gradeId) {
   const { data, error } = await supabase.from("school_invites")
-    .insert({ school_id: schoolId, code: generateInviteCode(), role, division_id: divisionId || null, created_by: createdBy, max_uses: maxUses })
+    .insert({ school_id: schoolId, code: generateInviteCode(), role, grade_id: role === "coordinator" ? (gradeId || null) : null, created_by: createdBy, max_uses: 1 })
     .select().single();
   if (error) throw error;
   return data;
 }
 export async function fetchInvites(schoolId) {
-  const { data, error } = await supabase.from("school_invites").select("*, divisions(name)")
+   const { data, error } = await supabase.from("school_invites").select("*, grades(name)")
     .eq("school_id", schoolId).order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
