@@ -24,7 +24,7 @@ export default function StructurePanel({ schoolId }) {
     try { await fn(); await load(); if (okMsg) toast(okMsg); }
     catch (err) {
       const msg = err.message || "";
-      toast(/duplicate|unique/i.test(msg) ? "That name already exists" : (msg || "Something went wrong"), "error");
+      toast(/duplicate|unique/i.test(msg) ? "That name already exists" : /foreign key|violates/i.test(msg) ? "Can't remove this - a coordinator is still assigned to it" : (msg || "Something went wrong"), "error");
     }
   };
 
