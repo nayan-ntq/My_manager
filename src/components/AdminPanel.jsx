@@ -320,7 +320,7 @@ function RosterTab({ schoolId, divisions }) {
   useEffect(() => { load(); }, [load]);
 
   const changeRole = async (m, role) => {
-    await school.updateMemberRole(m.id, role, role === "coordinator" ? m.division_id : null);
+    await school.updateMemberRole(m.id, role, role === "coordinator" ? m.grade_id : null);
     load();
     toast("Updated");
   };
@@ -367,7 +367,7 @@ function RosterTab({ schoolId, divisions }) {
               <option value="school_admin">Admin</option>
             </select>
             {m.role === "coordinator" && (
-              <select className="input" style={{ padding: "6px 8px", fontSize: 12.5, width: "auto" }} value={m.division_id || ""} onChange={(e) => changeDivision(m, e.target.value || null)}>
+              <select className="input" style={{ padding: "6px 8px", fontSize: 12.5, width: "auto" }} value={m.grade_id || ""} onChange={(e) => changeDivision(m, e.target.value || null)}>
                 <option value="">Whole school</option>
                 {divisions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
@@ -432,7 +432,7 @@ function InvitesTab({ schoolId, userId, divisions }) {
           <div className="marks-row" key={inv.id}>
             <div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 15, letterSpacing: "0.06em" }}>{inv.code}</div>
-              <div className="card-sub">{ROLE_LABELS[inv.role] || inv.role}{inv.divisions?.name ? ` - ${inv.divisions.name}` : ""} - {inv.uses}/{inv.max_uses} used</div>
+              <div className="card-sub">{ROLE_LABELS[inv.role] || inv.role}{inv.grades?.name ? ` - grade ${inv.grades.name}` : ""} - {inv.uses}/{inv.max_uses} used</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button type="button" className="btn btn-icon" onClick={() => copy(inv)} title="Copy code">{copiedId === inv.id ? <Check size={13} /> : <Copy size={13} />}</button>
@@ -450,7 +450,9 @@ function InvitesTab({ schoolId, userId, divisions }) {
 export default function AdminPanel({ userId, schoolId, classes, reloadClasses }) {
   const [sub, setSub] = useState("hierarchy");
   const [divisions, setDivisions] = useState([]);
-  useEffect(() => { school.fetchDivisions(schoolId).then(setDivisions); }, [schoolId, sub]);
+  useEffect(() => {
+    school.fetchStructure(schoolId).then((d) => setDivisions(d.grades.map((g) => ({ ...g, name: /^\d+$/.test(g.name) ? `Grade ${g.name}` : g.name }))));
+  }, [schoolId, sub]);
 
   return (
     <div>
