@@ -135,7 +135,7 @@ function ClassesPanel({ userId, classes, reloadClasses }) {
 
   return (
     <div>
-      <div className="card">
+      <div className="card" style={{ display: "none" }}>
         <div className="card-title">New class</div>
         <div className="row-2">
           <input className="input" placeholder="Class name (e.g. 6B - Maths)" value={name} onChange={(e) => setName(e.target.value)} />
