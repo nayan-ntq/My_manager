@@ -11,7 +11,7 @@ import { supabase } from "./supabaseClient";
 export async function fetchMySchool(userId) {
   const { data, error } = await supabase
     .from("school_members")
-    .select("role, division_id, schools(id, name, correction_types, test_types)")
+    .select("role, division_id, grade_id, schools(id, name, correction_types, test_types)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -19,7 +19,7 @@ export async function fetchMySchool(userId) {
   if (error) throw error;
   if (!data?.schools) return null;
   return {
-    id: data.schools.id, name: data.schools.name, role: data.role, divisionId: data.division_id,
+    id: data.schools.id, name: data.schools.name, role: data.role, divisionId: data.division_id, gradeId: data.grade_id,
     correctionTypes: data.schools.correction_types || [], testTypes: data.schools.test_types || [],
   };
 }
@@ -105,8 +105,8 @@ export async function fetchSchoolMembers(schoolId) {
   if (error) throw error;
   return data || [];
 }
-export async function updateMemberRole(memberId, role, divisionId) {
-  const { error } = await supabase.from("school_members").update({ role, division_id: divisionId || null }).eq("id", memberId);
+export async function updateMemberRole(memberId, role, gradeId) {
+  const { error } = await supabase.from("school_members").update({ role, grade_id: role === "coordinator" ? (gradeId || null) : null }).eq("id", memberId);
   if (error) throw error;
 }
 /** Sets a person's display name - an admin can do this for anyone in their school, or a person for themself. */
@@ -139,15 +139,15 @@ function generateInviteCode() {
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
 }
-export async function createInvite(schoolId, createdBy, role, divisionId, maxUses = 1) {
+export async function createInvite(schoolId, createdBy, role, gradeId) {
   const { data, error } = await supabase.from("school_invites")
-    .insert({ school_id: schoolId, code: generateInviteCode(), role, division_id: divisionId || null, created_by: createdBy, max_uses: maxUses })
+    .insert({ school_id: schoolId, code: generateInviteCode(), role, grade_id: role === "coordinator" ? (gradeId || null) : null, created_by: createdBy, max_uses: 1 })
     .select().single();
   if (error) throw error;
   return data;
 }
 export async function fetchInvites(schoolId) {
-  const { data, error } = await supabase.from("school_invites").select("*, divisions(name)")
+   const { data, error } = await supabase.from("school_invites").select("*, grades(name)")
     .eq("school_id", schoolId).order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
@@ -178,4 +178,73 @@ export async function reviewSignoff(id, approve, note, reviewerId) {
     signoff_at: new Date().toISOString(), signoff_note: note || null,
   }).eq("id", id);
   if (error) throw error;
+}
+
+
+/* ---------- school structure: grades, sections, subjects ---------- */
+
+export async function fetchStructure(schoolId) {
+  const [g, s, sub, ss] = await Promise.all([
+    supabase.from("grades").select("*").eq("school_id", schoolId),
+    supabase.from("sections").select("*").eq("school_id", schoolId),
+    supabase.from("subjects").select("*").eq("school_id", schoolId),
+    supabase.from("section_subjects").select("*").eq("school_id", schoolId),
+  ]);
+  for (const r of [g, s, sub, ss]) if (r.error) throw r.error;
+  return { grades: g.data || [], sections: s.data || [], subjects: sub.data || [], sectionSubjects: ss.data || [] };
+}
+export async function addGrade(schoolId, name) {
+  const { error } = await supabase.from("grades").insert({ school_id: schoolId, name });
+  if (error) throw error;
+}
+export async function deleteGrade(id) {
+  const { error } = await supabase.from("grades").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function addSubject(schoolId, name) {
+  const { error } = await supabase.from("subjects").insert({ school_id: schoolId, name });
+  if (error) throw error;
+}
+export async function deleteSubject(id) {
+  const { error } = await supabase.from("subjects").delete().eq("id", id);
+  if (error) throw error;
+}
+/** Adds a section; if copyFromSectionId is given, the new section gets the same subjects. */
+export async function addSection(schoolId, gradeId, name, copyFromSectionId) {
+  const { data: sec, error } = await supabase.from("sections").insert({ school_id: schoolId, grade_id: gradeId, name }).select().single();
+  if (error) throw error;
+  if (copyFromSectionId) {
+    const { data: rows, error: e2 } = await supabase.from("section_subjects").select("subject_id").eq("section_id", copyFromSectionId);
+    if (e2) throw e2;
+    if (rows?.length) {
+      const { error: e3 } = await supabase.from("section_subjects").insert(rows.map((r) => ({ school_id: schoolId, section_id: sec.id, subject_id: r.subject_id })));
+      if (e3) throw e3;
+    }
+  }
+  return sec;
+}
+export async function deleteSection(id) {
+  const { error } = await supabase.from("sections").delete().eq("id", id);
+  if (error) throw error;
+}
+/** Turns one subject on or off for a list of sections at once. */
+export async function setSubjectForSections(schoolId, sectionIds, subjectId, on) {
+  if (!sectionIds.length) return;
+  if (on) {
+    const { error } = await supabase.from("section_subjects").upsert(
+      sectionIds.map((id) => ({ school_id: schoolId, section_id: id, subject_id: subjectId })),
+      { onConflict: "section_id,subject_id", ignoreDuplicates: true }
+    );
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("section_subjects").delete().in("section_id", sectionIds).eq("subject_id", subjectId);
+    if (error) throw error;
+  }
+}
+
+
+/** Assign (or change) the teacher for one section + subject. Coordinator and above only. */
+export async function assignTeacher(sectionId, subjectId, teacherId) {
+  const { error } = await supabase.rpc("assign_class_teacher", { p_section_id: sectionId, p_subject_id: subjectId, p_teacher_id: teacherId });
+  if (error) throw new Error(error.message);
 }
