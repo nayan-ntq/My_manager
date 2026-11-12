@@ -19,6 +19,7 @@ import { toast } from "../components/Toast";
 import * as db from "../lib/db";
 import * as school from "../lib/school";
 import AdminPanel from "../components/AdminPanel";
+import GradePlanPanel from "../components/GradePlanPanel";
 import SignoffPanel from "../components/SignoffPanel";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
@@ -2071,6 +2072,7 @@ const TEACH_SECTIONS = [
 // shown only for the roles that need them, always standalone
 const SIGNOFF_SECTION = { value: "signoff", label: "Sign-off", sub: "Review lessons waiting on you", icon: ShieldCheck, color: "#D9A441" };
 const ADMIN_SECTION = { value: "admin", label: "School admin", sub: "Structure, people & invites", icon: Building2, color: "#2A2723" };
+const PLAN_SECTION = { value: "plan", label: "Grade plan", sub: "Shared lecture plan per grade and subject", icon: ClipboardList, color: "#F2790C" };
 const CATEGORY_ICONS = { "Lessons": ClipboardList, "Assessment": Check, "Attendance & schedule": CalendarClock };
 const CATEGORY_COLORS = { "Lessons": "#F2790C", "Assessment": "#5B7FDB", "Attendance & schedule": "#2FA88F" };
 
@@ -2132,12 +2134,15 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
   const role = mySchool?.role;
   const canReview = role === "coordinator" || role === "school_admin" || role === "super_admin";
   const canAdmin = role === "school_admin" || role === "super_admin";
+  const [isIncharge, setIsIncharge] = useState(false);
+  useEffect(() => { school.fetchMyIncharges(userId).then((r) => setIsIncharge(r.length > 0)).catch(() => {}); }, [userId]);
 
     const sections = [
     // only coordinator and above manage classes and rosters; teachers work from the planner
     ...TEACH_SECTIONS.filter((s) => s.value !== "classes" || canReview),
     ...(canReview ? [SIGNOFF_SECTION] : []),
     ...(canAdmin ? [ADMIN_SECTION] : []),
+    ...(canReview || isIncharge ? [PLAN_SECTION] : []),
   ];
 
   if (!sub) return <TeachHome classes={classes} sections={sections} onOpen={onSubChange} />;
@@ -2160,6 +2165,7 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
       {sub === "classes" && <ClassesPanel userId={userId} classes={classes} reloadClasses={reloadClasses} />}
       {sub === "signoff" && canReview && <SignoffPanel schoolId={mySchool.id} userId={userId} />}
       {sub === "admin" && canAdmin && <AdminPanel userId={userId} schoolId={mySchool.id} classes={classes} reloadClasses={reloadClasses} />}
+      {sub === "plan" && (canReview || isIncharge) && <GradePlanPanel userId={userId} schoolId={mySchool.id} role={role} gradeId={mySchool.gradeId} />}
     </div>
   );
 }
