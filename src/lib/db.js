@@ -229,7 +229,7 @@ export async function fetchImportLogs(userId) {
 /* ---------- teaching: planner ---------- */
 
 export async function fetchPlannerEntries(userId, classId) {
-  const { data, error } = await supabase.from("planner_entries").select("*").eq("user_id", userId).eq("class_id", classId).order("date", { ascending: false });
+  const { data, error } = await supabase.from("planner_entries").select("*").eq("user_id", userId).eq("class_id", classId).order("lecture_number", { ascending: false, nullsFirst: false }).order("date", { ascending: false });
   if (error) throw error;
   return data || [];
 }
