@@ -461,6 +461,7 @@ export default function AdminPanel({ userId, schoolId, classes, reloadClasses })
         options={[
           { value: "hierarchy", label: "Structure" },
           { value: "assign", label: "Assign" },
+          { value: "incharge", label: "Incharge" },
           { value: "roster", label: "People" },
           { value: "invites", label: "Invites" },
           { value: "terms", label: "Terms" },
@@ -469,6 +470,7 @@ export default function AdminPanel({ userId, schoolId, classes, reloadClasses })
       />
       {sub === "hierarchy" && <StructurePanel schoolId={schoolId} />}
       {sub === "assign" && <AssignmentsPanel schoolId={schoolId} />}
+      {sub === "incharge" && <PlanningInchargePanel schoolId={schoolId} />}
       {sub === "roster" && <RosterTab schoolId={schoolId} divisions={divisions} />}
       {sub === "invites" && <InvitesTab schoolId={schoolId} userId={userId} divisions={divisions} />}
       {sub === "terms" && <TermsTab schoolId={schoolId} canEdit={true} />}
