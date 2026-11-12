@@ -419,7 +419,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
           )}
         </div>
       )}
-      <div className="card">
+      <div className="card" style={mySchool?.role === "teacher" ? { display: "none" } : undefined}>
         <div className="card-title-row">
           <div className="card-title" style={{ marginBottom: 0 }}>New lecture</div>
           <PhotoImportButton kind="planner" context={{ classHint: classes.find((c) => c.id === classId)?.name, allClassNames: classes.map((c) => c.name) }} onResult={applyPhotoImport} />
@@ -493,7 +493,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
             {e.signoff_status === "rejected" && e.signoff_note && <div className="planner-field" style={{ color: "#E8556B" }}><span className="planner-label">Note:</span> {e.signoff_note}</div>}
           </div>
           {e.photos?.length > 0 && <div className="photo-strip" style={{ marginTop: 8 }}>{e.photos.map((p, i) => <div className="photo-thumb photo-thumb-view" key={i}><img src={p} alt="" /></div>)}</div>}
-          {(!e.signoff_status || e.signoff_status === "none" || e.signoff_status === "rejected") && (
+          {!e.plan_lecture_id && (!e.signoff_status || e.signoff_status === "none" || e.signoff_status === "rejected") && (
             <button type="button" className="chip-btn" style={{ marginTop: 10 }} onClick={() => submitSignoff(e.id)}>Submit for sign-off</button>
           )}
         </div>
