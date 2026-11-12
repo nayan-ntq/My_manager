@@ -301,3 +301,16 @@ export async function reviewPlan(ids, approve, note) {
   if (error) throw new Error(error.message);
   return data;
 }
+
+
+/** Creates one draft lecture in a grade plan with all its content (used by photo import). */
+export async function createPlanLecture(schoolId, gradeId, subjectId, userId, f) {
+  const { error } = await supabase.from("grade_plan_lectures").insert({
+    school_id: schoolId, grade_id: gradeId, subject_id: subjectId, lecture_number: f.lecture_number,
+    chapter_number: f.chapter_number || null, chapter: f.chapter || null,
+    objectives: f.objectives || null, resources: f.resources || null,
+    classwork_items: f.classwork_items || [], homework_items: f.homework_items || [],
+    created_by: userId, status: "draft",
+  });
+  if (error) throw error;
+}
