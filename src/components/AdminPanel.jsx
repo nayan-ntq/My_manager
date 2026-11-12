@@ -9,6 +9,7 @@ import { computeWorkingDays, WEEKDAY_LABELS } from "../lib/terms";
 import PhotoImportButton from "./PhotoImportButton";
 import CsvReviewSheet from "./CsvReviewSheet";
 import StructurePanel from "./StructurePanel";
+import PlanningInchargePanel from "./PlanningInchargePanel";
 import AssignmentsPanel from "./AssignmentsPanel";
 
 /* ---------- terms + holidays (admin sets dates, everyone can see working days) ---------- */
