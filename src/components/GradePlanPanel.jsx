@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Plus, Check, X } from "lucide-react";
 import ConfirmDelete from "./ConfirmDelete";
 import PlannerEntryEditSheet from "./PlannerEntryEditSheet";
+import PhotoImportButton from "./PhotoImportButton";
 import { toast } from "./Toast";
 import * as school from "../lib/school";
 
@@ -21,6 +22,7 @@ export default function GradePlanPanel({ userId, schoolId, role, gradeId }) {
   const [lectures, setLectures] = useState([]);
   const [newNumber, setNewNumber] = useState("");
   const [editing, setEditing] = useState(null);
+  const [importRows, setImportRows] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -103,6 +105,36 @@ export default function GradePlanPanel({ userId, schoolId, role, gradeId }) {
     run(() => school.reviewPlan(ids, false, note), "Sent back to the incharge");
   };
 
+  // photo import: the section label on the page is ignored; one lecture number = one lecture
+  const onPhotoResult = ({ data }) => {
+    const entries = data?.entries?.length ? data.entries : data ? [data] : [];
+    const byNum = new Map();
+    for (const e of entries) {
+      const n = parseInt(e.lecture_number, 10);
+      if (!n) continue;
+      const size = (e.classwork_items || []).length + (e.homework_items || []).length;
+      const cur = byNum.get(n);
+      if (!cur || size > cur.size) byNum.set(n, { ...e, lecture_number: n, size });
+    }
+    if (byNum.size === 0) { toast("No lecture numbers found - write 'Lec 12' next to each lesson", "error"); return; }
+    setImportRows([...byNum.values()].sort((a, b) => a.lecture_number - b.lecture_number)
+      .map((r) => ({ ...r, exists: lectures.some((l) => l.lecture_number === r.lecture_number) })));
+  };
+  const cleanItems = (items) => (items || []).filter((it) => it?.text?.trim())
+    .map((it) => ({ exercise: it.exercise || "", text: it.text.trim(), medium: it.medium || "", important: !!it.important }));
+  const confirmImport = async () => {
+    let added = 0;
+    for (const r of importRows.filter((x) => !x.exists)) {
+      try {
+        await school.createPlanLecture(schoolId, gid, sid, userId, { ...r, classwork_items: cleanItems(r.classwork_items), homework_items: cleanItems(r.homework_items) });
+        added++;
+      } catch (err) { /* a lecture number that appeared in the meantime is skipped */ }
+    }
+    setImportRows(null);
+    await loadLectures();
+    toast(`${added} lecture${added === 1 ? "" : "s"} imported as drafts`);
+  };
+
   if (!structure) return <div className="card-sub">Loading...</div>;
   if (!pair) return <div className="card"><div className="card-sub">No plans to show yet. An admin or coordinator can make you the planning incharge for a subject.</div></div>;
 
@@ -125,6 +157,11 @@ export default function GradePlanPanel({ userId, schoolId, role, gradeId }) {
             <button type="button" className="btn btn-ghost" onClick={addLecture}><Plus size={14} /> Add lecture</button>
           </div>
         )}
+        {(isManager || isInchargeHere) && (
+          <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <PhotoImportButton kind="planner" context={{}} onResult={onPhotoResult} label="Import plan from photo" />
+          </div>
+        )}
         {(isManager || isInchargeHere) && drafts.length > 0 && (
           <button type="button" className="btn btn-primary" style={{ marginTop: 10, width: "100%" }} onClick={submit}>
             Submit {drafts.length} draft lecture{drafts.length === 1 ? "" : "s"} for approval
@@ -137,6 +174,29 @@ export default function GradePlanPanel({ userId, schoolId, role, gradeId }) {
         )}
       </div>
 
+      {importRows && (
+        <div className="card">
+          <div className="card-title">Import from photo</div>
+          <div className="card-sub" style={{ marginBottom: 8 }}>
+            Found {importRows.length} lecture{importRows.length === 1 ? "" : "s"}. Sections are ignored: this is one plan for the whole grade. They come in as drafts you can still edit.
+          </div>
+          {importRows.map((r) => (
+            <div className="marks-row" key={r.lecture_number}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+                  Lecture {r.lecture_number}{r.chapter ? ` - ${r.chapter_number ? `Ch ${r.chapter_number}: ` : ""}${r.chapter}` : ""}
+                </div>
+                <div className="card-sub">{(r.classwork_items || []).length} classwork, {(r.homework_items || []).length} homework{r.exists ? " - already in the plan, will be skipped" : ""}</div>
+              </div>
+              {!r.exists && <button type="button" className="btn btn-icon" onClick={() => setImportRows(importRows.filter((x) => x.lecture_number !== r.lecture_number))}><X size={13} /></button>}
+            </div>
+          ))}
+          <div className="sheet-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setImportRows(null)}>Discard</button>
+            <button type="button" className="btn btn-primary" onClick={confirmImport}>Import {importRows.filter((r) => !r.exists).length} as drafts</button>
+          </div>
+        </div>
+      )}
       {lectures.length === 0 ? (
         <div className="card"><div className="card-sub">No lectures in this plan yet.</div></div>
       ) : lectures.map((l) => {
