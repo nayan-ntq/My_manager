@@ -248,3 +248,56 @@ export async function assignTeacher(sectionId, subjectId, teacherId) {
   const { error } = await supabase.rpc("assign_class_teacher", { p_section_id: sectionId, p_subject_id: subjectId, p_teacher_id: teacherId });
   if (error) throw new Error(error.message);
 }
+
+/* ---------- planning incharge + grade plans ---------- */
+
+export async function fetchIncharges(schoolId) {
+  const { data, error } = await supabase.from("planning_incharges").select("*").eq("school_id", schoolId);
+  if (error) throw error;
+  return data || [];
+}
+export async function fetchMyIncharges(userId) {
+  const { data, error } = await supabase.from("planning_incharges").select("*").eq("user_id", userId);
+  if (error) throw error;
+  return data || [];
+}
+export async function setIncharge(schoolId, gradeId, subjectId, userId) {
+  const del = await supabase.from("planning_incharges").delete().eq("grade_id", gradeId).eq("subject_id", subjectId);
+  if (del.error) throw del.error;
+  const { error } = await supabase.from("planning_incharges").insert({ school_id: schoolId, grade_id: gradeId, subject_id: subjectId, user_id: userId });
+  if (error) throw error;
+}
+export async function removeIncharge(gradeId, subjectId) {
+  const { error } = await supabase.from("planning_incharges").delete().eq("grade_id", gradeId).eq("subject_id", subjectId);
+  if (error) throw error;
+}
+export async function fetchGradePlan(gradeId, subjectId) {
+  const { data, error } = await supabase.from("grade_plan_lectures").select("*").eq("grade_id", gradeId).eq("subject_id", subjectId).order("lecture_number");
+  if (error) throw error;
+  return data || [];
+}
+export async function addPlanLecture(schoolId, gradeId, subjectId, lectureNumber, userId) {
+  const { data, error } = await supabase.from("grade_plan_lectures")
+    .insert({ school_id: schoolId, grade_id: gradeId, subject_id: subjectId, lecture_number: lectureNumber, created_by: userId, status: "draft" })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updatePlanLecture(id, patch) {
+  const { error } = await supabase.from("grade_plan_lectures").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function deletePlanLecture(id) {
+  const { error } = await supabase.from("grade_plan_lectures").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function submitPlan(gradeId, subjectId, ids) {
+  const { data, error } = await supabase.rpc("submit_plan_lectures", { p_grade_id: gradeId, p_subject_id: subjectId, p_ids: ids || null });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function reviewPlan(ids, approve, note) {
+  const { data, error } = await supabase.rpc("review_plan_lectures", { p_ids: ids, p_approve: approve, p_note: note || null });
+  if (error) throw new Error(error.message);
+  return data;
+}
