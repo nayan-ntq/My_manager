@@ -314,3 +314,28 @@ export async function createPlanLecture(schoolId, gradeId, subjectId, userId, f)
   });
   if (error) throw error;
 }
+
+
+/* ---------- section rosters + student identity ---------- */
+
+export async function rosterAddStudent(sectionId, name, rollNo) {
+  const { data, error } = await supabase.rpc("roster_add_student", { p_section_id: sectionId, p_name: name, p_roll_no: rollNo || null });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function rosterUpdateStudent(personId, f) {
+  const { error } = await supabase.rpc("roster_update_student", {
+    p_person_id: personId, p_name: f.name, p_roll_no: f.roll_no || null, p_contact: f.contact || null, p_notes: f.notes || null,
+  });
+  if (error) throw new Error(error.message);
+}
+export async function rosterRemoveStudent(personId) {
+  const { error } = await supabase.rpc("roster_remove_student", { p_person_id: personId });
+  if (error) throw new Error(error.message);
+}
+/** Every subject-class row of the same child that this person is allowed to see. */
+export async function fetchStudentSiblings(personId) {
+  const { data, error } = await supabase.from("students").select("id, class_id, person_id, classes(id, name, subject)").eq("person_id", personId);
+  if (error) throw error;
+  return data || [];
+}
