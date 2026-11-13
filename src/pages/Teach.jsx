@@ -21,6 +21,7 @@ import * as school from "../lib/school";
 import AdminPanel from "../components/AdminPanel";
 import GradePlanPanel from "../components/GradePlanPanel";
 import SignoffPanel from "../components/SignoffPanel";
+import RosterPanel from "../components/RosterPanel";
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 /* ---------- classes ---------- */
@@ -2068,7 +2069,7 @@ const TEACH_SECTIONS = [
   { value: "attendance", label: "Attendance", sub: "Today's roll call, class by class", icon: ClipboardCheck, color: "#2FA88F", category: "Attendance & schedule" },
   { value: "absences", label: "Absences", sub: "Who missed what lesson", icon: UserX, color: "#E8556B", category: "Attendance & schedule" },
   { value: "timetable", label: "Timetable", sub: "Your weekly class schedule", icon: CalendarClock, color: "#D9A441", category: "Attendance & schedule" },
-  { value: "classes", label: "Classes", sub: "Rosters, students & sections", icon: Users, color: "#4FB3C4" }, // no category - stays standalone, used often
+  { value: "classes", label: "Students", sub: "Class rosters by section", icon: Users, color: "#4FB3C4" }, // no category - stays standalone, used often
 ];
 // shown only for the roles that need them, always standalone
 const SIGNOFF_SECTION = { value: "signoff", label: "Sign-off", sub: "Review lessons waiting on you", icon: ShieldCheck, color: "#D9A441" };
@@ -2163,7 +2164,7 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "absences" && <AbsencePanel userId={userId} classes={classes} />}
       {sub === "timetable" && <TimetablePanel userId={userId} classes={classes} />}
-      {sub === "classes" && <ClassesPanel userId={userId} classes={classes} reloadClasses={reloadClasses} />}
+      {sub === "classes" && <RosterPanel schoolId={mySchool.id} role={role} gradeId={mySchool.gradeId} />}
       {sub === "signoff" && canReview && <SignoffPanel schoolId={mySchool.id} userId={userId} />}
       {sub === "admin" && canAdmin && <AdminPanel userId={userId} schoolId={mySchool.id} classes={classes} reloadClasses={reloadClasses} />}
       {sub === "plan" && (canReview || isIncharge) && <GradePlanPanel userId={userId} schoolId={mySchool.id} role={role} gradeId={mySchool.gradeId} />}
