@@ -328,13 +328,13 @@ export async function fetchPlannerChapters(userId, classId) {
  *  Classwork & Homework browsing list (date-wise / chapter-wise filterable). */
 export async function fetchClassworkHomework(userId, classId) {
   const { data, error } = await supabase.from("planner_entries")
-    .select("id, date, chapter_number, chapter, classwork_items, homework_items")
+    .select("id, date, chapter_number, chapter, classwork_items, homework_items, plan_lecture_id")
     .eq("user_id", userId).eq("class_id", classId).order("date", { ascending: false });
   if (error) throw error;
   const rows = [];
   for (const entry of data || []) {
-    (entry.classwork_items || []).forEach((item, i) => rows.push({ ...item, type: "classwork", entryId: entry.id, itemIndex: i, date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter }));
-    (entry.homework_items || []).forEach((item, i) => rows.push({ ...item, type: "homework", entryId: entry.id, itemIndex: i, date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter }));
+    (entry.classwork_items || []).forEach((item, i) => rows.push({ ...item, type: "classwork", locked: !!entry.plan_lecture_id, entryId: entry.id, itemIndex: i, date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter }));
+    (entry.homework_items || []).forEach((item, i) => rows.push({ ...item, type: "homework", locked: !!entry.plan_lecture_id, entryId: entry.id, itemIndex: i, date: entry.date, chapterNumber: entry.chapter_number, chapter: entry.chapter }));
   }
   return rows;
 }
