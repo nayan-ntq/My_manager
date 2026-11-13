@@ -472,7 +472,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
                   {e.signoff_status === "pending" ? "Awaiting sign-off" : e.signoff_status === "approved" ? "Approved" : "Sent back"}
                 </span>
               )}
-              <ConfirmDelete onConfirm={() => remove(e.id)} size={13} />
+              {!e.plan_lecture_id && <ConfirmDelete onConfirm={() => remove(e.id)} size={13} />}
             </div>
           </div>
           <div onClick={() => setEditingEntry(e)} style={{ cursor: "pointer" }}>
@@ -510,6 +510,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
       {editingEntry && (
         <PlannerEntryEditSheet
           entry={editingEntry}
+          lockContent={!!editingEntry.plan_lecture_id}
           onClose={() => setEditingEntry(null)}
           onSave={(patch) => saveEntry(editingEntry.id, patch)}
           onMarkTaught={async (entry, kind, status) => {
@@ -1746,11 +1747,11 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
         </div>
         <div className="card-sub" style={{ marginBottom: 12 }}>{fmtDateHeading(item.date)}{item.chapterNumber ? ` - Ch ${item.chapterNumber}` : ""}{item.chapter ? `: ${item.chapter}` : ""}</div>
         <div className="field-label" style={{ marginTop: 0 }}>Exercise</div>
-        <input className="input" placeholder="e.g. Ex 8.3, W/S-1" value={exercise} onChange={(e) => setExercise(e.target.value)} />
+        <input className="input" placeholder="e.g. Ex 8.3, W/S-1" disabled={item.locked} value={exercise} onChange={(e) => setExercise(e.target.value)} />
         <div className="field-label">Question / concept</div>
-        <input className="input" value={text} onChange={(e) => setText(e.target.value)} />
+        <input className="input" value={text} disabled={item.locked} onChange={(e) => setText(e.target.value)} />
         <div className="field-label">Medium</div>
-        <select className="input" value={medium} onChange={(e) => setMedium(e.target.value)}>
+        <select className="input" value={medium} disabled={item.locked} onChange={(e) => setMedium(e.target.value)}>
           <option value="">Not set</option>
           {MEDIUM_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
@@ -1772,7 +1773,7 @@ function ConceptItemEditSheet({ item, onClose, onSave, onDelete }) {
         </div>
         <div className="toggle-row">
           <div><div className="toggle-label">Important</div><div className="toggle-sub">Flags this item across the app</div></div>
-          <div className={`switch ${important ? "on" : ""}`} onClick={() => setImportant(!important)}><div className="switch-knob" /></div>
+          <div className={`switch ${important ? "on" : ""}`} onClick={() => !item.locked && setImportant(!important)}><div className="switch-knob" /></div>
         </div>
         <div className="sheet-actions">
           <ConfirmDelete onConfirm={() => { onDelete(); onClose(); }} size={14} />
