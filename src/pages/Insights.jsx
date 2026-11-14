@@ -202,6 +202,7 @@ export default function Insights({ userId, classes, school: mySchool }) {
   const [loading, setLoading] = useState(true);
   const last7 = useMemo(() => Array.from({ length: 7 }, (_, i) => toKey(addDays(new Date(), -i))).reverse(), []);
   const canReview = mySchool?.role === "coordinator" || mySchool?.role === "school_admin" || mySchool?.role === "super_admin";
+  const [classTeacherOf, setClassTeacherOf] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -216,7 +217,10 @@ export default function Insights({ userId, classes, school: mySchool }) {
         ]);
         setAttendanceRows(attendance); setPerformanceRows(performance); setTerms(termRows); setHolidays(holidayRows);
 
-        if (canReview && mySchool?.id) {
+        let ct = false;
+        try { ct = (await school.fetchMyClassTeacherSections(userId)).length > 0; } catch (e) { ct = false; }
+        setClassTeacherOf(ct);
+        if ((canReview || ct) && mySchool?.id) {
           const [all, members] = await Promise.all([db.fetchSchoolClasses(mySchool.id), school.fetchSchoolMembers(mySchool.id)]);
           const nameByUser = Object.fromEntries(members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email]));
           setSchoolClasses(all.map((c) => ({ ...c, ownerName: nameByUser[c.user_id] })));
@@ -298,7 +302,7 @@ export default function Insights({ userId, classes, school: mySchool }) {
         </>
       )}
 
-      {view === "classes" && <ClassesTab classesForView={schoolClasses} canSeeOtherTeachers={canReview} />}
+      {view === "classes" && <ClassesTab classesForView={schoolClasses} canSeeOtherTeachers={canReview || classTeacherOf} />}
       {view === "teachers" && canReview && mySchool?.id && <TeachersTab schoolId={mySchool.id} />}
     </div>
   );
