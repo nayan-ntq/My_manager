@@ -92,7 +92,7 @@ export default function RosterPanel({ schoolId, role, gradeId }) {
     setCsv(null); await load(); toast(`Imported ${added} students`);
   };
 
-  if (options.length === 0) return <div className="card"><div className="card-sub">No sections yet. The admin sets up grades and sections in School admin > Structure.</div></div>;
+  if (options.length === 0) return <div className="card"><div className="card-sub">No sections yet. The admin sets up grades and sections in School admin Structure.</div></div>;
 
   return (
     <div>
@@ -105,7 +105,7 @@ export default function RosterPanel({ schoolId, role, gradeId }) {
           {persons.length} student{persons.length === 1 ? "" : "s"}. One roster shared by {sectionClasses.length} subject class{sectionClasses.length === 1 ? "" : "es"}{sectionClasses.length ? ` (${sectionClasses.map((c) => c.subject || c.name).join(", ")})` : ""}.
         </div>
         {sectionClasses.length === 0 ? (
-          <div className="card-sub" style={{ marginTop: 8 }}>No class in this section yet. In School admin > Assign, give a teacher one subject for this section first.</div>
+          <div className="card-sub" style={{ marginTop: 8 }}>No class in this section yet. In School admin Assign, give a teacher one subject for this section first.</div>
         ) : (
           <>
             <div className="row-2" style={{ marginTop: 10 }}>
