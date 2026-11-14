@@ -331,6 +331,19 @@ function RosterTab({ schoolId, divisions }) {
     toast("Updated");
   };
   const remove = async (m) => { await school.removeMember(m.id); load(); toast("Removed from school"); };
+  const sendReset = async (m) => {
+    const to = m.profiles?.email;
+    if (!to) return toast("No email on file for this person", "error");
+    try { await db.sendPasswordReset(to); toast(`Reset link sent to ${to}`); }
+    catch (err) { toast(err.message || "Couldn't send the email", "error"); }
+  };
+  const setTempPassword = async (m) => {
+    const pw = window.prompt(`Type a temporary password for ${m.profiles?.full_name || m.profiles?.email} (at least 8 characters). Ask them to change it after signing in.`);
+    if (!pw) return;
+    if (pw.length < 8) return toast("Use at least 8 characters", "error");
+    try { await school.adminSetPassword(m.user_id, pw); toast("Password set"); }
+    catch (err) { toast(err.message || "Couldn't set the password", "error"); }
+  };
   const startEditName = (m) => { setEditingNameFor(m.user_id); setNameInput(m.profiles?.full_name || ""); };
   const saveName = async (m) => {
     await school.updateProfileName(m.user_id, nameInput);
@@ -373,6 +386,8 @@ function RosterTab({ schoolId, divisions }) {
                 {divisions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             )}
+            <button type="button" className="chip-btn" onClick={() => sendReset(m)}>Reset email</button>
+            <button type="button" className="chip-btn" onClick={() => setTempPassword(m)}>Set password</button>
             <ConfirmDelete onConfirm={() => remove(m)} size={13} />
           </div>
         </div>
