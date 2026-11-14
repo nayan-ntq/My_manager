@@ -316,6 +316,30 @@ export async function createPlanLecture(schoolId, gradeId, subjectId, userId, f)
 }
 
 
+/* ---------- class teacher (one per section) ---------- */
+
+export async function fetchClassTeachers(schoolId) {
+  const { data, error } = await supabase.from("section_class_teachers").select("*").eq("school_id", schoolId);
+  if (error) throw error;
+  return data || [];
+}
+export async function fetchMyClassTeacherSections(userId) {
+  const { data, error } = await supabase.from("section_class_teachers").select("*").eq("user_id", userId);
+  if (error) throw error;
+  return data || [];
+}
+export async function setClassTeacher(schoolId, sectionId, userId) {
+  const del = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId);
+  if (del.error) throw del.error;
+  const { error } = await supabase.from("section_class_teachers").insert({ school_id: schoolId, section_id: sectionId, user_id: userId });
+  if (error) throw error;
+}
+export async function removeClassTeacher(sectionId) {
+  const { error } = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId);
+  if (error) throw error;
+}
+
+
 /* ---------- section rosters + student identity ---------- */
 
 export async function rosterAddStudent(sectionId, name, rollNo) {
