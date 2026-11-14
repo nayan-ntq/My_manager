@@ -10,14 +10,15 @@ export default function AssignmentsPanel({ schoolId }) {
   const [data, setData] = useState(null);
   const [classes, setClasses] = useState([]);
   const [members, setMembers] = useState([]);
+  const [classTeachers, setClassTeachers] = useState([]);
   const [busyKey, setBusyKey] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [structure, cls, mem] = await Promise.all([
-        school.fetchStructure(schoolId), db.fetchSchoolClasses(schoolId), school.fetchSchoolMembers(schoolId),
+      const [structure, cls, mem, ct] = await Promise.all([
+        school.fetchStructure(schoolId), db.fetchSchoolClasses(schoolId), school.fetchSchoolMembers(schoolId), school.fetchClassTeachers(schoolId),
       ]);
-      setData(structure); setClasses(cls); setMembers(mem);
+      setData(structure); setClasses(cls); setMembers(mem); setClassTeachers(ct);
     } catch (err) { toast(err.message || "Couldn't load assignments", "error"); }
   }, [schoolId]);
   useEffect(() => { load(); }, [load]);
@@ -41,6 +42,14 @@ export default function AssignmentsPanel({ schoolId }) {
     } catch (err) { toast(err.message || "Couldn't assign", "error"); }
     finally { setBusyKey(null); }
   };
+  const changeClassTeacher = async (secId, userId) => {
+    try {
+      if (userId) await school.setClassTeacher(schoolId, secId, userId);
+      else await school.removeClassTeacher(secId);
+      await load();
+      toast(userId ? "Class teacher set" : "Class teacher removed");
+    } catch (err) { toast(err.message || "Couldn't save", "error"); }
+  };
 
   const grades = [...data.grades].sort(byName);
   if (grades.length === 0) {
@@ -51,16 +60,28 @@ export default function AssignmentsPanel({ schoolId }) {
     <div>
       <div className="card">
         <div className="card-sub" style={{ lineHeight: 1.5 }}>
-          Choose who teaches each subject in each section. Changing a teacher moves that class's students, planner, attendance, corrections and tests to the new teacher. The old teacher's timetable slots for that class are removed.
+          Choose who teaches each subject in each section. Changing a teacher moves that class's students, planner, attendance, corrections and tests to the new teacher. The old teacher's timetable slots for that class are removed. The class teacher can see every subject of their section (read only).
         </div>
       </div>
       {grades.map((g) => {
         const secs = data.sections.filter((s) => s.grade_id === g.id).sort(byName);
         return secs.map((sec) => {
           const subs = data.sectionSubjects.filter((x) => x.section_id === sec.id).map((x) => subjectById[x.subject_id]).filter(Boolean).sort(byName);
+          const ct = classTeachers.find((x) => x.section_id === sec.id);
           return (
             <div className="card" key={sec.id}>
               <div className="card-title">{gradeLabel(g.name)} - Section {sec.name}</div>
+              <div className="marks-row">
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>Class teacher</div>
+                  <div className="card-sub">Sees all subjects of this section</div>
+                </div>
+                <select className="input" style={{ padding: "6px 8px", fontSize: 12.5, width: "auto", maxWidth: 170 }}
+                  value={ct?.user_id || ""} onChange={(e) => changeClassTeacher(sec.id, e.target.value)}>
+                  <option value="">Not assigned</option>
+                  {members.map((m) => <option key={m.user_id} value={m.user_id}>{nameOf(m)}</option>)}
+                </select>
+              </div>
               {subs.length === 0 ? <div className="card-sub">No subjects set up for this section (Structure tab).</div> : subs.map((sub) => {
                 const cls = classFor(sec.id, sub.id);
                 const key = `${sec.id}-${sub.id}`;
