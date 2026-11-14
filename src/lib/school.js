@@ -339,3 +339,16 @@ export async function fetchStudentSiblings(personId) {
   if (error) throw error;
   return data || [];
 }
+
+
+/** Admin only: sets a temporary password for someone in the school (runs on the server). */
+export async function adminSetPassword(userId, password) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch("/api/admin-set-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+    body: JSON.stringify({ userId, password }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed (${res.status})`);
+}
