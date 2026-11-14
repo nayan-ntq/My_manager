@@ -8,7 +8,7 @@ export async function getSession() {
   return data.session;
 }
 export function onAuthChange(callback) {
-  const { data } = supabase.auth.onAuthStateChange((_e, session) => callback(session));
+  const { data } = supabase.auth.onAuthStateChange((event, session) => callback(session, event));
   return () => data.subscription.unsubscribe();
 }
 export async function signUp(email, password) {
@@ -650,4 +650,25 @@ export async function fetchFullAppData(userId) {
   }));
 
   return { classes: classSummaries };
+}
+
+
+/* ---------- passwords ---------- */
+
+/** Change your own password. Re-checks the current one first. */
+export async function changePassword(email, currentPassword, newPassword) {
+  const check = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+  if (check.error) throw new Error("Your current password isn't right");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+/** Emails a reset link (used by "Forgot password" and by the admin's "Reset email" button). */
+export async function sendPasswordReset(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+  if (error) throw error;
+}
+/** Used on the "set a new password" screen after opening a reset link. */
+export async function setNewPassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
 }
