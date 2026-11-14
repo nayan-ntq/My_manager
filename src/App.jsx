@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import SchoolSetup from "./components/SchoolSetup";
 import ProfileSheet from "./components/ProfileSheet";
 import Spinner from "./components/Spinner";
+import SetNewPassword from "./components/SetNewPassword";
 import { ToastHost } from "./components/Toast";
 import * as db from "./lib/db";
 import { fetchMySchool } from "./lib/school";
@@ -15,6 +16,7 @@ import { fetchMySchool } from "./lib/school";
 /** Reads {tab, sub} from the URL hash (#teach/syllabus -> {tab:"teach", sub:"syllabus"}). */
 function parseHash() {
   const raw = window.location.hash.replace(/^#\/?/, "");
+  if (/access_token|type=recovery|error_description/.test(raw)) return { tab: "teach", sub: null };
   const [tab, sub] = raw.split("/");
   return { tab: tab || "teach", sub: sub || null };
 }
@@ -29,10 +31,14 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [recovering, setRecovering] = useState(() => window.location.hash.includes("type=recovery"));
 
   useEffect(() => {
     db.getSession().then(setSession);
-    const unsub = db.onAuthChange(setSession);
+    const unsub = db.onAuthChange((s, event) => {
+      if (event === "PASSWORD_RECOVERY") setRecovering(true);
+      setSession(s);
+    });
     return unsub;
   }, []);
 
@@ -85,6 +91,7 @@ export default function App() {
 
   if (session === undefined) return <Spinner fullPage />;
   if (!session) return <Auth />;
+  if (recovering) return <SetNewPassword onDone={() => { setRecovering(false); window.location.hash = "#teach"; }} />;
   if (loadError) {
     return (
       <div className="auth-shell">
