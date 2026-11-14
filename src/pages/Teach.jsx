@@ -248,6 +248,15 @@ function PlannerPanel({ userId, classes, mySchool }) {
   const latestTaughtLecture = entries.filter((e) => e.taught_date).reduce((max, e) => Math.max(max, e.lecture_number || 0), 0);
   const aheadBehind = expectedLecture !== null && latestTaughtLecture ? latestTaughtLecture - expectedLecture : null;
 
+  // the real date each lecture falls on, from this teacher's own timetable, term and holidays
+  const lectureDateLabel = (e) => {
+    if (!activeTerm || !e.lecture_number) return "";
+    const d = resolveLectureDate(timetableSlots, e.class_id, e.lecture_number, activeTerm.start_date, holidays);
+    if (!d) return "";
+    const label = new Date(d + "T00:00:00").toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+    return ` - ${label}${!e.taught_date && d < todayKey() ? " (due)" : ""}`;
+  };
+
   useEffect(() => {
     if (!cls?.grade) { setSyllabusChapters([]); return; }
     db.fetchSyllabus(mySchool.id, cls.grade, cls.subject).then(setSyllabusChapters).catch(() => setSyllabusChapters([]));
@@ -456,7 +465,7 @@ function PlannerPanel({ userId, classes, mySchool }) {
       {entries.map((e) => (
         <div className="card planner-entry" key={e.id}>
           <div className="card-title-row">
-            <div className="card-sub mono">{e.lecture_number ? `Lecture ${e.lecture_number}` : e.date}{e.taught_date ? ` - taught ${e.taught_date}` : ""}</div>
+            <div className="card-sub mono">{e.lecture_number ? `Lecture ${e.lecture_number}` : e.date}{lectureDateLabel(e)}{e.taught_date ? ` - taught ${e.taught_date}` : ""}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {e.classwork_status && (
                 <span className="badge-mini" style={e.classwork_status === "partial" ? { color: "#F2790C", background: "#F2790C15" } : e.classwork_status === "advanced" ? { color: "#5B7FDB", background: "#5B7FDB15" } : { color: "#2FA88F", background: "#2FA88F15" }}>
