@@ -1,16 +1,18 @@
-/** Every slot occurrence (one per day it meets) for a class, sorted chronologically from
- *  fromDate, skipping any date in holidayDates. Each entry in a multi-day-per-week
- *  timetable is its own lecture occurrence. */
+const pad = (n) => String(n).padStart(2, "0");
+/** Local calendar date as YYYY-MM-DD. (toISOString shifts the day for timezones ahead of UTC.) */
+export const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/** Every slot occurrence (one per day it meets) for a class, in date order from fromDate, skipping
+ *  any date in holidaySet. Each entry in a multi-day-per-week timetable is its own lecture. */
 function* occurrencesFrom(timetableSlots, classId, fromDate, holidaySet) {
   const dows = timetableSlots.filter((s) => s.class_id === classId).map((s) => s.day_of_week);
   if (dows.length === 0) return;
   const dowSet = new Set(dows);
-  // slots can repeat the same day_of_week (two periods same day) - count each as separate lecture
   const perDayCount = {};
   for (const d of dows) perDayCount[d] = (perDayCount[d] || 0) + 1;
   for (let d = new Date(fromDate); ; d.setDate(d.getDate() + 1)) {
     if (dowSet.has(d.getDay())) {
-      const key = d.toISOString().slice(0, 10);
+      const key = dateKey(d);
       if (!holidaySet.has(key)) {
         for (let i = 0; i < perDayCount[d.getDay()]; i++) yield key;
       }
@@ -19,41 +21,38 @@ function* occurrencesFrom(timetableSlots, classId, fromDate, holidaySet) {
   }
 }
 
-/** The calendar date lecture N falls on, counting slot occurrences for this class from
- *  the term's start date, skipping holidays. Null if there's no timetable or term yet. */
+/** The calendar date lecture N falls on, counting from the term's start and skipping holidays and off days. */
 export function resolveLectureDate(timetableSlots, classId, lectureNumber, termStartDate, holidayDates) {
   if (!termStartDate || !lectureNumber || lectureNumber < 1) return null;
   const holidaySet = new Set(holidayDates);
   const gen = occurrencesFrom(timetableSlots, classId, new Date(termStartDate + "T00:00:00"), holidaySet);
-  let i = 0, result = null;
-  for (const dateKey of gen) {
+  let i = 0;
+  for (const dateKeyValue of gen) {
     i++;
-    if (i === lectureNumber) { result = dateKey; break; }
+    if (i === lectureNumber) return dateKeyValue;
   }
-  return result;
+  return null;
 }
 
-/** How many lecture occurrences for this class should have happened by (and including)
- *  today, counting from the term's start date and skipping holidays - "what lecture
- *  number should we be on by now". */
+/** How many lectures should have happened by (and including) today - "what lecture should we be on". */
 export function expectedLectureNumberToday(timetableSlots, classId, termStartDate, holidayDates, today) {
   if (!termStartDate) return null;
   const holidaySet = new Set(holidayDates);
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayStr = dateKey(today);
   const gen = occurrencesFrom(timetableSlots, classId, new Date(termStartDate + "T00:00:00"), holidaySet);
   let count = 0;
-  for (const dateKey of gen) {
-    if (dateKey > todayKey) break;
+  for (const k of gen) {
+    if (k > todayStr) break;
     count++;
   }
   return count;
 }
 
-/** Which term's date range today falls in, or the most recent one that's already started. */
+/** Which term's date range today falls in, or the most recent one that has already started. */
 export function currentTerm(terms, today) {
-  const todayKey = today.toISOString().slice(0, 10);
-  const within = terms.find((t) => todayKey >= t.start_date && todayKey <= t.end_date);
+  const todayStr = dateKey(today);
+  const within = terms.find((t) => todayStr >= t.start_date && todayStr <= t.end_date);
   if (within) return within;
-  const started = terms.filter((t) => t.start_date <= todayKey).sort((a, b) => b.start_date.localeCompare(a.start_date));
+  const started = terms.filter((t) => t.start_date <= todayStr).sort((a, b) => b.start_date.localeCompare(a.start_date));
   return started[0] || null;
 }
