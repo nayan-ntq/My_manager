@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen, Camera, Loader2, Image as ImageIcon } from "lucide-react";
 import { compressImage } from "../lib/images";
 import PlannerEntryEditSheet, { ConceptItemList, itemsToText } from "../components/PlannerEntryEditSheet";
-import { resolveLectureDate, expectedLectureNumberToday, currentTerm } from "../lib/lectures";
+import { resolveLectureDate, expectedLectureNumberToday, currentTerm, dateKey } from "../lib/lectures";
 import { Segmented } from "../components/Shared";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
@@ -23,7 +23,7 @@ import GradePlanPanel from "../components/GradePlanPanel";
 import SignoffPanel from "../components/SignoffPanel";
 import RosterPanel from "../components/RosterPanel";
 
-function todayKey() { return new Date().toISOString().slice(0, 10); }
+function todayKey() { return dateKey(new Date()); }
 /* ---------- classes ---------- */
 
 function ClassEditSheet({ cls, onClose, onSave, onDelete }) {
@@ -237,7 +237,15 @@ function PlannerPanel({ userId, classes, mySchool }) {
     if (!mySchool?.id) return;
     (async () => {
       const [slots, termRows, holidayRows] = await Promise.all([db.fetchTimetable(userId), db.fetchTerms(mySchool.id), db.fetchHolidays(mySchool.id)]);
-      setTimetableSlots(slots); setTerms(termRows); setHolidays(holidayRows.map((h) => h.date));
+      // days a term marks as weekly off (e.g. Sat and Sun) count like holidays: no lecture lands on them
+      const offDates = [];
+      for (const t of termRows) {
+        const off = new Set(t.weekly_off_days || [0]);
+        for (let d = new Date(t.start_date + "T00:00:00"); d <= new Date(t.end_date + "T00:00:00"); d.setDate(d.getDate() + 1)) {
+          if (off.has(d.getDay())) offDates.push(dateKey(d));
+        }
+      }
+      setTimetableSlots(slots); setTerms(termRows); setHolidays([...holidayRows.map((h) => h.date), ...offDates]);
     })();
   }, [userId, mySchool?.id]);
 
