@@ -9,7 +9,7 @@ export function computeWorkingDays(term, holidayDates = []) {
   let count = 0;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     if (offDays.has(d.getDay())) continue;
-    const key = d.toISOString().slice(0, 10);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     if (holidaySet.has(key)) continue;
     count++;
   }
