@@ -68,9 +68,11 @@ export default function AssignmentsPanel({ schoolId }) {
         return secs.map((sec) => {
           const subs = data.sectionSubjects.filter((x) => x.section_id === sec.id).map((x) => subjectById[x.subject_id]).filter(Boolean).sort(byName);
           const ct = classTeachers.find((x) => x.section_id === sec.id);
+          const rosterSize = Math.max(0, ...classes.filter((c) => c.section_id === sec.id).map((c) => c.students.length));
           return (
             <div className="card" key={sec.id}>
               <div className="card-title">{gradeLabel(g.name)} - Section {sec.name}</div>
+              <div className="card-sub" style={{ marginTop: -6, marginBottom: 8 }}>{rosterSize} student{rosterSize === 1 ? "" : "s"} in this section</div>
               <div className="marks-row">
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13.5 }}>Class teacher</div>
@@ -89,7 +91,7 @@ export default function AssignmentsPanel({ schoolId }) {
                   <div className="marks-row" key={sub.id}>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 13.5 }}>{sub.name}</div>
-                      <div className="card-sub">{cls ? `${cls.students.length} students` : "No class created yet"}</div>
+                      <div className="card-sub">{cls ? `${cls.students.length} students` : rosterSize ? `No teacher yet - the ${rosterSize} students are added when you assign one` : "No class created yet"}</div>
                     </div>
                     <select className="input" style={{ padding: "6px 8px", fontSize: 12.5, width: "auto", maxWidth: 170 }}
                       value={cls?.user_id || ""} disabled={busyKey === key} onChange={(e) => assign(sec.id, sub.id, e.target.value)}>
