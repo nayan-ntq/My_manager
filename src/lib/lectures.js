@@ -56,3 +56,26 @@ export function currentTerm(terms, today) {
   const started = terms.filter((t) => t.start_date <= todayStr).sort((a, b) => b.start_date.localeCompare(a.start_date));
   return started[0] || null;
 }
+
+/**
+ * Weekly-off dates for a term. With a grade group: its off weekdays plus its Saturday rule
+ * (every Saturday, 2nd and 4th, 1st/3rd/5th, or working). With no group: the term's own off days.
+ */
+export function termOffDates(term, group) {
+  const out = [];
+  const fixed = new Set(group ? (group.off_weekdays || []) : (term.weekly_off_days || [0]));
+  const rule = group ? group.saturday_rule : (fixed.has(6) ? "all" : "working");
+  const end = new Date(term.end_date + "T00:00:00");
+  for (let d = new Date(term.start_date + "T00:00:00"); d <= end; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();
+    let off;
+    if (dow === 6) {
+      const nth = Math.ceil(d.getDate() / 7); // which Saturday of the month
+      off = rule === "all" || (rule === "alt_2_4" && (nth === 2 || nth === 4)) || (rule === "alt_1_3" && (nth === 1 || nth === 3 || nth === 5));
+    } else {
+      off = fixed.has(dow);
+    }
+    if (off) out.push(dateKey(d));
+  }
+  return out;
+}
