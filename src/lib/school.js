@@ -359,7 +359,7 @@ export async function rosterRemoveStudent(personId) {
 }
 /** Every subject-class row of the same child that this person is allowed to see. */
 export async function fetchStudentSiblings(personId) {
-  const { data, error } = await supabase.from("students").select("id, class_id, person_id, classes(id, name, subject)").eq("person_id", personId);
+  const { data, error } = await supabase.from("students").select("id, class_id, person_id, classes(id, name, subject, user_id)").eq("person_id", personId);
   if (error) throw error;
   return data || [];
 }
@@ -422,5 +422,49 @@ export async function addCoClassTeacher(schoolId, sectionId, userId) {
 }
 export async function removeClassTeacherUser(sectionId, userId) {
   const { error } = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId).eq("user_id", userId);
+  if (error) throw error;
+}
+
+
+/* ---------- section attendance ---------- */
+
+export async function fetchSectionAttendance(sectionId, date) {
+  const { data: cls, error } = await supabase.from("classes").select("id, students(id, person_id, name, roll_no)").eq("section_id", sectionId);
+  if (error) throw error;
+  const withStudents = (cls || []).filter((c) => (c.students || []).length);
+  if (!withStudents.length) return { persons: [], absent: [], isDayOff: false, classCount: (cls || []).length };
+  const main = [...withStudents].sort((a, b) => b.students.length - a.students.length)[0];
+  const { data: rec, error: e2 } = await supabase.from("attendance_records").select("*").eq("class_id", main.id).eq("date", date).maybeSingle();
+  if (e2) throw e2;
+  const persons = [...main.students].sort((a, b) => a.name.localeCompare(b.name))
+    .map((s) => ({ person_id: s.person_id, student_id: s.id, name: s.name, roll_no: s.roll_no }));
+  const absent = persons.filter((p) => (rec?.present || {})[p.student_id] === false).map((p) => p.person_id);
+  return { persons, absent, isDayOff: !!rec?.is_day_off, classCount: (cls || []).length };
+}
+export async function saveSectionAttendance(sectionId, date, absentPersonIds, dayOff) {
+  const { data, error } = await supabase.rpc("set_section_attendance", { p_section_id: sectionId, p_date: date, p_absent: absentPersonIds, p_day_off: !!dayOff });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/* ---------- student remarks ---------- */
+
+export async function fetchRemarks(personId, sectionId) {
+  const { data, error } = await supabase.from("student_remarks")
+    .select("*, profiles(full_name, email), classes(subject, name)")
+    .eq("person_id", personId).eq("section_id", sectionId)
+    .order("remark_date", { ascending: false }).order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function addRemark(f) {
+  const { error } = await supabase.from("student_remarks").insert({
+    school_id: f.schoolId, section_id: f.sectionId, person_id: f.personId,
+    class_id: f.classId || null, kind: f.kind, body: f.body, author_id: f.authorId,
+  });
+  if (error) throw new Error(error.message);
+}
+export async function deleteRemark(id) {
+  const { error } = await supabase.from("student_remarks").delete().eq("id", id);
   if (error) throw error;
 }
