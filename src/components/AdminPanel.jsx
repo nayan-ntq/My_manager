@@ -9,6 +9,7 @@ import { computeWorkingDays, WEEKDAY_LABELS } from "../lib/terms";
 import PhotoImportButton from "./PhotoImportButton";
 import CsvReviewSheet from "./CsvReviewSheet";
 import StructurePanel from "./StructurePanel";
+import GradeGroupsPanel from "./GradeGroupsPanel";
 import PlanningInchargePanel from "./PlanningInchargePanel";
 import AssignmentsPanel from "./AssignmentsPanel";
 
@@ -475,6 +476,7 @@ export default function AdminPanel({ userId, schoolId, classes, reloadClasses })
       <Segmented
         options={[
           { value: "hierarchy", label: "Structure" },
+          { value: "groups", label: "Groups" },
           { value: "assign", label: "Assign" },
           { value: "incharge", label: "Incharge" },
           { value: "roster", label: "People" },
@@ -484,6 +486,7 @@ export default function AdminPanel({ userId, schoolId, classes, reloadClasses })
         value={sub} onChange={setSub}
       />
       {sub === "hierarchy" && <StructurePanel schoolId={schoolId} />}
+      {sub === "groups" && <GradeGroupsPanel schoolId={schoolId} />}
       {sub === "assign" && <AssignmentsPanel schoolId={schoolId} />}
       {sub === "incharge" && <PlanningInchargePanel schoolId={schoolId} />}
       {sub === "roster" && <RosterTab schoolId={schoolId} divisions={divisions} />}
