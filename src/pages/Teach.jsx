@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, X, UserPlus, ClipboardList, ClipboardCheck, Check, BarChart3, Users, ChevronRight, ChevronDown, ChevronLeft, UserX, CalendarClock, Building2, ShieldCheck, Star, Filter, BookOpen, Camera, Loader2, Image as ImageIcon } from "lucide-react";
 import { compressImage } from "../lib/images";
 import PlannerEntryEditSheet, { ConceptItemList, itemsToText } from "../components/PlannerEntryEditSheet";
-import { resolveLectureDate, expectedLectureNumberToday, currentTerm, dateKey } from "../lib/lectures";
+import { resolveLectureDate, expectedLectureNumberToday, currentTerm, dateKey, termOffDates } from "../lib/lectures";
 import { Segmented } from "../components/Shared";
 import PhotoImportButton from "../components/PhotoImportButton";
 import CsvReviewSheet from "../components/CsvReviewSheet";
@@ -220,7 +220,10 @@ function PlannerPanel({ userId, classes, mySchool }) {
   const [showShared, setShowShared] = useState(false);
   const [timetableSlots, setTimetableSlots] = useState([]);
   const [terms, setTerms] = useState([]);
-  const [holidays, setHolidays] = useState([]);
+  const [schoolHolidays, setSchoolHolidays] = useState([]);
+  const [structureGrades, setStructureGrades] = useState([]);
+  const [gradeGroups, setGradeGroups] = useState([]);
+  const [, setHolidays] = useState([]); // old setter kept so the loader below still runs; its value is no longer used
   const cls = classes.find((c) => c.id === classId);
 
   const load = useCallback(async () => {
@@ -236,7 +239,11 @@ function PlannerPanel({ userId, classes, mySchool }) {
   useEffect(() => {
     if (!mySchool?.id) return;
     (async () => {
-      const [slots, termRows, holidayRows] = await Promise.all([db.fetchTimetable(userId), db.fetchTerms(mySchool.id), db.fetchHolidays(mySchool.id)]);
+      const [slots, termRows, holidayRows, struct, groups] = await Promise.all([
+        db.fetchTimetable(userId), db.fetchTerms(mySchool.id), db.fetchHolidays(mySchool.id),
+        school.fetchStructure(mySchool.id), school.fetchGradeGroups(mySchool.id),
+      ]);
+      setSchoolHolidays(holidayRows.map((h) => h.date)); setStructureGrades(struct.grades); setGradeGroups(groups);
       // days a term marks as weekly off (e.g. Sat and Sun) count like holidays: no lecture lands on them
       const offDates = [];
       for (const t of termRows) {
@@ -251,6 +258,10 @@ function PlannerPanel({ userId, classes, mySchool }) {
 
   const today = new Date();
   const activeTerm = currentTerm(terms, today);
+  // holidays plus this class's weekly off days (its grade group's rule, or the term's own off days)
+  const clsGrade = structureGrades.find((g) => g.id === cls?.grade_id);
+  const clsGroup = clsGrade ? gradeGroups.find((g) => g.id === clsGrade.group_id) || null : null;
+  const holidays = [...schoolHolidays, ...terms.flatMap((t) => termOffDates(t, clsGroup))];
   const resolvedDate = activeTerm && lectureNumber ? resolveLectureDate(timetableSlots, classId, Number(lectureNumber), activeTerm.start_date, holidays) : null;
   const expectedLecture = activeTerm ? expectedLectureNumberToday(timetableSlots, classId, activeTerm.start_date, holidays, today) : null;
   const latestTaughtLecture = entries.filter((e) => e.taught_date).reduce((max, e) => Math.max(max, e.lecture_number || 0), 0);
