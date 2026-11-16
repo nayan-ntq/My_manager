@@ -376,3 +376,51 @@ export async function adminSetPassword(userId, password) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Failed (${res.status})`);
 }
+
+
+/* ---------- grade groups (weekly off days) ---------- */
+
+export async function fetchGradeGroups(schoolId) {
+  const { data, error } = await supabase.from("grade_groups").select("*").eq("school_id", schoolId).order("name");
+  if (error) throw error;
+  return data || [];
+}
+export async function addGradeGroup(schoolId, name) {
+  const { error } = await supabase.from("grade_groups").insert({ school_id: schoolId, name });
+  if (error) throw error;
+}
+export async function updateGradeGroup(id, patch) {
+  const { error } = await supabase.from("grade_groups").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function deleteGradeGroup(id) {
+  const { error } = await supabase.from("grade_groups").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function setGradeGroup(gradeId, groupId) {
+  const { error } = await supabase.from("grades").update({ group_id: groupId || null }).eq("id", gradeId);
+  if (error) throw error;
+}
+
+/* ---------- main + co class teachers ---------- */
+
+export async function setMainClassTeacher(schoolId, sectionId, userId) {
+  const a = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId).eq("is_main", true);
+  if (a.error) throw a.error;
+  const b = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId).eq("user_id", userId);
+  if (b.error) throw b.error;
+  const { error } = await supabase.from("section_class_teachers").insert({ school_id: schoolId, section_id: sectionId, user_id: userId, is_main: true });
+  if (error) throw error;
+}
+export async function removeMainClassTeacher(sectionId) {
+  const { error } = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId).eq("is_main", true);
+  if (error) throw error;
+}
+export async function addCoClassTeacher(schoolId, sectionId, userId) {
+  const { error } = await supabase.from("section_class_teachers").insert({ school_id: schoolId, section_id: sectionId, user_id: userId, is_main: false });
+  if (error) throw error;
+}
+export async function removeClassTeacherUser(sectionId, userId) {
+  const { error } = await supabase.from("section_class_teachers").delete().eq("section_id", sectionId).eq("user_id", userId);
+  if (error) throw error;
+}
