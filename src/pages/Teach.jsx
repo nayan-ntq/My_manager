@@ -22,6 +22,7 @@ import AdminPanel from "../components/AdminPanel";
 import GradePlanPanel from "../components/GradePlanPanel";
 import SignoffPanel from "../components/SignoffPanel";
 import RosterPanel from "../components/RosterPanel";
+import SectionAttendancePanel from "../components/SectionAttendancePanel";
 
 function todayKey() { return dateKey(new Date()); }
 /* ---------- classes ---------- */
@@ -2187,7 +2188,7 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
       {sub === "planner" && <PlannerPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "concepts" && <ConceptsPanel userId={userId} classes={classes} />}
       {sub === "syllabus" && <SyllabusPanel userId={userId} classes={classes} mySchool={mySchool} />}
-      {sub === "attendance" && <AttendancePanel userId={userId} classes={classes} />}
+      {sub === "attendance" && <SectionAttendancePanel userId={userId} schoolId={mySchool.id} classes={classes} />}
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "absences" && <AbsencePanel userId={userId} classes={classes} />}
