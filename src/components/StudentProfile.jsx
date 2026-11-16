@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cart
 import * as db from "../lib/db";
 import * as school from "../lib/school";
 import Spinner from "./Spinner";
+import StudentRemarks from "./StudentRemarks";
 import { CORRECTION_TITLES, CORRECTION_CONCEPT_TITLES, HOMEWORK_QUALITY_TITLES } from "../lib/constants";
 
 const SKILLS = [
@@ -352,6 +353,7 @@ export default function StudentProfile({ student, cls, showTeacherName, onClose 
               })}
             </div>
 
+            <StudentRemarks student={student} cls={cls} />
             {student.notes && (
               <div className="card">
                 <div className="card-title">Notes</div>
