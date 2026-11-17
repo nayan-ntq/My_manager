@@ -470,6 +470,7 @@ export async function deleteRemark(id) {
 }
 
 
+
 /* ---------- exams and exam syllabus ---------- */
 
 export async function fetchExams(schoolId) {
