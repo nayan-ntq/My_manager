@@ -468,3 +468,45 @@ export async function deleteRemark(id) {
   const { error } = await supabase.from("student_remarks").delete().eq("id", id);
   if (error) throw error;
 }
+
+
+/* ---------- exams and exam syllabus ---------- */
+
+export async function fetchExams(schoolId) {
+  const { data, error } = await supabase.from("exams").select("*, exam_sections(section_id)").eq("school_id", schoolId)
+    .order("exam_date", { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function createExam(f) {
+  const { data, error } = await supabase.rpc("create_exam", {
+    p_grade_id: f.gradeId, p_subject_id: f.subjectId, p_title: f.title, p_exam_type: f.examType,
+    p_exam_date: f.examDate, p_max_marks: f.maxMarks, p_passing_marks: f.passingMarks, p_section_ids: f.sectionIds,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function updateExam(id, patch) {
+  const { error } = await supabase.from("exams").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+export async function deleteExam(id) {
+  const { error } = await supabase.from("exams").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function saveExamSyllabus(id, chapters, concepts, text) {
+  const { error } = await supabase.rpc("save_exam_syllabus", { p_exam_id: id, p_chapters: chapters, p_concepts: concepts, p_text: text || null });
+  if (error) throw new Error(error.message);
+}
+export async function submitExamSyllabus(id) {
+  const { error } = await supabase.rpc("submit_exam_syllabus", { p_exam_id: id });
+  if (error) throw new Error(error.message);
+}
+export async function reviewExamSyllabus(id, approve, note) {
+  const { error } = await supabase.rpc("review_exam_syllabus", { p_exam_id: id, p_approve: approve, p_note: note || null });
+  if (error) throw new Error(error.message);
+}
+export async function setSectionBatch(sectionId, batch) {
+  const { error } = await supabase.from("sections").update({ batch: batch || null }).eq("id", sectionId);
+  if (error) throw error;
+}
