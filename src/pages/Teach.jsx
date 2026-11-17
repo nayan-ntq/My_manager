@@ -2193,7 +2193,7 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
       {sub === "planner" && <PlannerPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "concepts" && <ConceptsPanel userId={userId} classes={classes} />}
       {sub === "syllabus" && <SyllabusPanel userId={userId} classes={classes} mySchool={mySchool} />}
-      {sub === "attendance" && <SectionAttendancePanel userId={userId} schoolId={mySchool.id} classes={classes} />}
+      {sub === "attendance" && <SectionAttendancePanel userId={userId} schoolId={mySchool.id} classes={classes} role={role} gradeId={mySchool.gradeId} />}
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "exams" && <ExamsPanel userId={userId} schoolId={mySchool.id} role={role} gradeId={mySchool.gradeId} testTypes={mySchool.testTypes} />}
