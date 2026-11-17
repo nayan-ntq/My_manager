@@ -1075,6 +1075,16 @@ function CorrectionPanel({ userId, classes, mySchool }) {
           <div className="legend" style={{ padding: "0 16px" }}>tap a cell to cycle status  |  tap the dot to flag which topics  |  tap a column header for full details</div>
         </div>
       )}
+      {cls && records.length > 0 && (
+        <CorrectionStudentView students={cls.students} records={records} isHomeworkRecord={isHomeworkRecord}
+          onSetOverall={async (r, sid, code) => {
+            const marks = { ...r.marks, [sid]: code };
+            await db.updateCorrectionMarks(userId, r.id, marks, sid, code);
+            setRecords((prev) => prev.map((x) => (x.id === r.id ? { ...x, marks } : x)));
+          }}
+          onSetConcept={(r, c, sid, status) => setConceptStatus(r, c, sid, status)}
+          onSetQuality={(r, c, sid, quality) => setConceptQuality(r, c, sid, quality)} />
+      )}
       {conceptQuick && (
         <ConceptQuickSheet
           record={records.find((r) => r.id === conceptQuick.record.id) || conceptQuick.record}
