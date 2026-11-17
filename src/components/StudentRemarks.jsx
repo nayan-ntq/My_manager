@@ -64,7 +64,6 @@ export default function StudentRemarks({ student, cls }) {
               {r.remark_date} - {r.profiles?.full_name || r.profiles?.email || "A teacher"}
               <span className="badge-mini">{r.kind === "overall" ? "Overall" : r.classes?.subject || "Subject"}</span>
             </div>
-            {r.author_id === me && <ConfirmDelete onConfirm={() => remove(r.id)} size={12} />}
           </div>
           <div style={{ fontSize: 13.5, marginTop: 3, whiteSpace: "pre-wrap" }}>{r.body}</div>
         </div>
