@@ -23,6 +23,8 @@ import GradePlanPanel from "../components/GradePlanPanel";
 import SignoffPanel from "../components/SignoffPanel";
 import RosterPanel from "../components/RosterPanel";
 import SectionAttendancePanel from "../components/SectionAttendancePanel";
+import CorrectionStudentView from "../components/CorrectionStudentView";
+import ExamsPanel from "../components/ExamsPanel";
 
 function todayKey() { return dateKey(new Date()); }
 /* ---------- classes ---------- */
@@ -1422,7 +1424,9 @@ function PerformancePanel({ userId, classes, mySchool }) {
         <div className="field-label">Class</div>
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />
         {!creating ? (
-          <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={() => setCreating(true)}><Plus size={14} /> New test record</button>
+          mySchool?.role === "teacher"
+            ? <div className="card-sub" style={{ marginTop: 8 }}>Tests are created by the admin or coordinator in Exams. Open a test below to enter marks.</div>
+            : <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={() => setCreating(true)}><Plus size={14} /> New test record</button>
         ) : (
           <>
             <div className="row-2" style={{ marginTop: 10 }}>
@@ -1487,7 +1491,7 @@ function PerformancePanel({ userId, classes, mySchool }) {
         return (
           <div className="card" key={r.id}>
             <div className="card-title-row">
-              <div style={{ cursor: "pointer" }} onClick={() => setEditingRecord(r)}>
+              <div style={{ cursor: "pointer" }} onClick={() => (!r.exam_id || mySchool?.role !== "teacher") && setEditingRecord(r)}>
                 <div className="card-title" style={{ marginBottom: 0 }}>{r.title} <span className="badge-mini">{r.test_type}</span></div>
                 <div className="card-sub mono">{r.exam_date || r.created_at?.slice(0, 10)}</div>
                 <div className="card-sub">Out of {r.max_marks}{r.passing_marks != null ? `  |  pass mark ${r.passing_marks}` : ""}{r.chapter_count ? `  |  ${r.chapter_count} chapters` : ""}</div>
@@ -1499,7 +1503,7 @@ function PerformancePanel({ userId, classes, mySchool }) {
                 )}
                 {r.exercises && <div className="card-sub">Exercises: {r.exercises}</div>}
               </div>
-              <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />
+              {(!r.exam_id || mySchool?.role !== "teacher") && <ConfirmDelete onConfirm={() => removeRecord(r.id)} size={13} />}
             </div>
             <div style={{ marginBottom: 8 }}>
               <PhotoImportButton kind="performance" context={{ students: cls.students.map((s) => s.name) }} onResult={({ csv }) => setMarksImport({ record: r, csv })} label="Import marks from photo" />
@@ -2095,6 +2099,7 @@ const TEACH_SECTIONS = [
   { value: "syllabus", label: "Syllabus", sub: "Chapters per grade, shared across sections", icon: BookOpen, color: "#5B7FDB", category: "Lessons" },
   { value: "correction", label: "Correction", sub: "Classwork & homework check-off", icon: Check, color: "#5B7FDB", category: "Assessment" },
   { value: "performance", label: "Scores", sub: "Tests, marks & concept breakdown", icon: BarChart3, color: "#8B7FC7", category: "Assessment" },
+  { value: "exams", label: "Exams", sub: "Exam setup and exam syllabus", icon: BookOpen, color: "#D9A441", category: "Assessment" },
   { value: "attendance", label: "Attendance", sub: "Today's roll call, class by class", icon: ClipboardCheck, color: "#2FA88F", category: "Attendance & schedule" },
   { value: "absences", label: "Absences", sub: "Who missed what lesson", icon: UserX, color: "#E8556B", category: "Attendance & schedule" },
   { value: "timetable", label: "Timetable", sub: "Your weekly class schedule", icon: CalendarClock, color: "#D9A441", category: "Attendance & schedule" },
@@ -2191,6 +2196,7 @@ export default function Teach({ userId, classes, reloadClasses, school: mySchool
       {sub === "attendance" && <SectionAttendancePanel userId={userId} schoolId={mySchool.id} classes={classes} />}
       {sub === "correction" && <CorrectionPanel userId={userId} classes={classes} mySchool={mySchool} />}
       {sub === "performance" && <PerformancePanel userId={userId} classes={classes} mySchool={mySchool} />}
+      {sub === "exams" && <ExamsPanel userId={userId} schoolId={mySchool.id} role={role} gradeId={mySchool.gradeId} testTypes={mySchool.testTypes} />}
       {sub === "absences" && <AbsencePanel userId={userId} classes={classes} />}
       {sub === "timetable" && <TimetablePanel userId={userId} classes={classes} />}
       {sub === "classes" && <RosterPanel schoolId={mySchool.id} role={role} gradeId={mySchool.gradeId} />}
