@@ -106,6 +106,22 @@ export default function StructurePanel({ schoolId }) {
               <button type="button" className="btn btn-ghost" onClick={() => addSection(g.id)}><Plus size={14} /> Add section</button>
             </div>
 
+            {secs.length > 0 && (
+              <>
+                <div className="field-label">Batch of each section (used to pick sections when creating exams)</div>
+                {secs.map((sec) => (
+                  <div className="marks-row" key={sec.id}>
+                    <span>Section {sec.name}</span>
+                    <select className="input" style={{ padding: "6px 8px", fontSize: 12.5, width: "auto" }} value={sec.batch || ""}
+                      onChange={(e) => run(() => school.setSectionBatch(sec.id, e.target.value))}>
+                      <option value="">No batch</option>
+                      <option value="Accelerated">Accelerated</option>
+                      <option value="Regular">Regular</option>
+                    </select>
+                  </div>
+                ))}
+              </>
+            )}
             <div className="field-label">Subjects taught in this grade</div>
             {subjects.length === 0 ? (
               <div className="card-sub">Add subjects at the top first.</div>
