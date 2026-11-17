@@ -5,10 +5,13 @@ import * as school from "../lib/school";
 
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const gradeLabel = (n) => (/^\d+$/.test(n) ? `Grade ${n}` : n);
+const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 
-export default function SectionAttendancePanel({ userId, schoolId, classes }) {
+export default function SectionAttendancePanel({ userId, schoolId, classes, role, gradeId }) {
+  const isManager = role === "coordinator" || role === "school_admin" || role === "super_admin";
   const [structure, setStructure] = useState(null);
-  const [mySections, setMySections] = useState(null);
+  const [mine, setMine] = useState(null);
+  const [options, setOptions] = useState([]);
   const [sectionId, setSectionId] = useState("");
   const [date, setDate] = useState(todayStr());
   const [info, setInfo] = useState(null);
@@ -19,15 +22,28 @@ export default function SectionAttendancePanel({ userId, schoolId, classes }) {
   const [readDate, setReadDate] = useState(todayStr());
   const [record, setRecord] = useState(null);
 
+  const labelOf = (s, secId) => {
+    const sec = s.sections.find((x) => x.id === secId);
+    const g = sec && s.grades.find((x) => x.id === sec.grade_id);
+    return sec && g ? `${gradeLabel(g.name)} - Section ${sec.name}` : "Section";
+  };
+
   useEffect(() => {
     (async () => {
       try {
-        const [s, mine] = await Promise.all([school.fetchStructure(schoolId), school.fetchMyClassTeacherSections(userId)]);
-        setStructure(s); setMySections(mine);
-        if (mine[0]) setSectionId(mine[0].section_id);
-      } catch (err) { setMySections([]); }
+        const [s, m] = await Promise.all([school.fetchStructure(schoolId), school.fetchMyClassTeacherSections(userId)]);
+        const ids = new Set(m.map((x) => x.section_id));
+        if (isManager) {
+          for (const sec of s.sections) {
+            if (role !== "coordinator" || !gradeId || sec.grade_id === gradeId) ids.add(sec.id);
+          }
+        }
+        const list = [...ids].map((id) => ({ id, label: labelOf(s, id), isMine: m.some((x) => x.section_id === id) })).sort((a, b) => byName(a.label, b.label));
+        setStructure(s); setMine(m); setOptions(list);
+        if (list[0]) setSectionId(list[0].id);
+      } catch (err) { setMine([]); }
     })();
-  }, [schoolId, userId]);
+  }, [schoolId, userId, role, gradeId]);
 
   const loadSection = useCallback(async () => {
     if (!sectionId) return;
@@ -43,11 +59,6 @@ export default function SectionAttendancePanel({ userId, schoolId, classes }) {
     db.fetchAttendance(userId, classId, readDate).then(setRecord).catch(() => setRecord(null));
   }, [userId, classId, readDate]);
 
-  const label = (secId) => {
-    const sec = structure?.sections.find((x) => x.id === secId);
-    const g = sec && structure.grades.find((x) => x.id === sec.grade_id);
-    return sec && g ? `${gradeLabel(g.name)} - Section ${sec.name}` : "Section";
-  };
   const toggle = (pid) => setAbsent((prev) => { const n = new Set(prev); n.has(pid) ? n.delete(pid) : n.add(pid); return n; });
   const save = async () => {
     setSaving(true);
@@ -58,23 +69,23 @@ export default function SectionAttendancePanel({ userId, schoolId, classes }) {
     finally { setSaving(false); }
   };
 
+  const current = options.find((o) => o.id === sectionId);
   const readCls = classes.find((c) => c.id === classId);
   const readAbsent = readCls && record && !record.is_day_off ? readCls.students.filter((s) => (record.present || {})[s.id] === false) : [];
 
-  if (mySections === null) return <div className="card-sub">Loading...</div>;
+  if (mine === null) return <div className="card-sub">Loading...</div>;
 
   return (
     <div>
-      {mySections.length > 0 ? (
+      {options.length > 0 ? (
         <div className="card">
-          <div className="card-title">Take attendance - class teacher</div>
-          <div className="card-sub" style={{ marginBottom: 8 }}>Tick the students who are absent. This applies to every subject of the section.</div>
-          {mySections.length > 1 && (
+          <div className="card-title">{current && !current.isMine ? "Attendance - admin override" : "Take attendance - class teacher"}</div>
+          <div className="card-sub" style={{ marginBottom: 8 }}>Tick the students who are absent. This applies to every subject of the section, and saving again corrects it.</div>
+          {options.length > 1 ? (
             <select className="input" value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
-              {mySections.map((m) => <option key={m.section_id} value={m.section_id}>{label(m.section_id)}</option>)}
+              {options.map((o) => <option key={o.id} value={o.id}>{o.label}{o.isMine ? "" : " (override)"}</option>)}
             </select>
-          )}
-          {mySections.length === 1 && <div style={{ fontWeight: 700, fontSize: 13.5 }}>{label(sectionId)}</div>}
+          ) : <div style={{ fontWeight: 700, fontSize: 13.5 }}>{current?.label}</div>}
           <div className="field-label">Date</div>
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
           <div className="toggle-row">
