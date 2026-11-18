@@ -94,49 +94,89 @@ function stripCodeFence(text) {
   return text.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
 }
 
-const RETRYABLE_STATUSES = new Set([429, 503, 504]);
-const MAX_ATTEMPTS = 3;
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 2;
+const TIME_BUDGET_MS = 50000; // stay under the 60s function limit
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const keysFor = (...names) => names.map((n) => process.env[n]).filter(Boolean);
+const rawBase64 = (img) => (img.includes(",") ? img.split(",")[1] : img);
 
-/** Gemini's flash models return 429 (rate limited) or 503 ("model is overloaded") fairly
- *  often under load - these are transient, not real failures, so retry with backoff
- *  before giving up. Non-retryable errors (bad key, bad request) fail immediately. */
-async function callGeminiWithRetry(url, apiKey, body) {
-  let lastError;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    let upstream;
-    try {
-      upstream = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        body: JSON.stringify(body),
-      });
-    } catch (networkErr) {
-      lastError = new Error("Couldn't reach Gemini - check your connection and try again");
-      if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, 600 * attempt)); continue; }
-      throw lastError;
+function httpError(message, status) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
+async function callGemini(apiKey, imageList, mimeType, prompt, isJson) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  const imageParts = imageList.map((img) => ({ inline_data: { mime_type: mimeType || "image/jpeg", data: rawBase64(img) } }));
+  const body = { contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }] };
+  if (isJson) body.generationConfig = { responseMimeType: "application/json" };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw httpError(data?.error?.message || `Gemini error (${res.status})`, res.status);
+  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("\n").trim();
+  if (!text) throw httpError("Gemini returned an empty response (it may have blocked an image)", 422);
+  return text;
+}
+
+async function callClaude(apiKey, imageList, mimeType, prompt) {
+  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+  const content = [
+    ...imageList.map((img) => ({ type: "image", source: { type: "base64", media_type: mimeType || "image/jpeg", data: rawBase64(img) } })),
+    { type: "text", text: prompt },
+  ];
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: "user", content }] }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw httpError(data?.error?.message || `Claude error (${res.status})`, res.status);
+  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  if (!text) throw httpError("Claude returned an empty response", 422);
+  return text;
+}
+
+/** Tries every configured key in order (Gemini keys first, then Claude), retrying
+ *  briefly on busy errors, and moves to the next key on any failure. */
+async function readWithFallback(imageList, mimeType, prompt, isJson) {
+  const providers = [
+    ...keysFor("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3").map((key, i) => ({
+      label: `Gemini key ${i + 1}`, run: () => callGemini(key, imageList, mimeType, prompt, isJson),
+    })),
+    ...keysFor("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_2").map((key, i) => ({
+      label: `Claude key ${i + 1}`, run: () => callClaude(key, imageList, mimeType, prompt),
+    })),
+  ];
+  if (providers.length === 0) throw new Error("No AI key is set. Add GEMINI_API_KEY (and optionally GEMINI_API_KEY_2, ANTHROPIC_API_KEY) in your Vercel project settings.");
+
+  const started = Date.now();
+  const failures = [];
+  for (const p of providers) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (Date.now() - started > TIME_BUDGET_MS) break;
+      try {
+        return await p.run();
+      } catch (err) {
+        const retry = RETRYABLE.has(err.status) && attempt < MAX_ATTEMPTS;
+        if (retry) { await sleep(700 * attempt); continue; }
+        failures.push(`${p.label}: ${err.message}`);
+        break;
+      }
     }
-    const data = await upstream.json().catch(() => ({}));
-    if (upstream.ok) return data;
-    if (RETRYABLE_STATUSES.has(upstream.status) && attempt < MAX_ATTEMPTS) {
-      lastError = new Error(data?.error?.message || `Gemini is busy (${upstream.status})`);
-      await new Promise((r) => setTimeout(r, 700 * attempt)); // 0.7s, 1.4s backoff
-      continue;
-    }
-    const msg = data?.error?.message || `Gemini API error (${upstream.status})`;
-    throw new Error(RETRYABLE_STATUSES.has(upstream.status) ? `Gemini is busy right now - please try again in a moment (${msg})` : msg);
+    if (Date.now() - started > TIME_BUDGET_MS) break;
   }
-  throw lastError;
+  throw new Error(`Couldn't read the photo. ${failures.slice(-2).join(" | ") || "Out of time - try fewer photos."}`);
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: "Vision import needs GEMINI_API_KEY set in your Vercel project settings." });
     return;
   }
 
@@ -154,24 +194,11 @@ export default async function handler(req, res) {
   const isJson = JSON_KINDS.has(kind);
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-    const imageParts = imageList.map((img) => ({
-      inline_data: { mime_type: mimeType || "image/jpeg", data: img.includes(",") ? img.split(",")[1] : img },
-    }));
-    const body = {
-      contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }],
-    };
-    if (isJson) body.generationConfig = { responseMimeType: "application/json" };
-
-    const data = await callGeminiWithRetry(url, apiKey, body);
-
-    const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text).join("\n").trim();
-    if (!text) throw new Error("Gemini returned an empty response (it may have blocked an image)");
-
+    const text = await readWithFallback(imageList, mimeType, prompt, isJson);
     if (isJson) {
       let parsed;
       try { parsed = JSON.parse(stripCodeFence(text)); }
-      catch (e) { throw new Error("Gemini's response wasn't valid JSON - try a clearer photo"); }
+      catch (e) { throw new Error("The AI's answer wasn't valid JSON - try a clearer photo"); }
       res.status(200).json({ data: parsed });
     } else {
       res.status(200).json({ csv: stripCodeFence(text) });
