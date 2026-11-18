@@ -511,3 +511,29 @@ export async function setSectionBatch(sectionId, batch) {
   const { error } = await supabase.from("sections").update({ batch: batch || null }).eq("id", sectionId);
   if (error) throw error;
 }
+
+
+/* ---------- parent summary data (read only) ---------- */
+
+export async function fetchParentSummaryData(studentId) {
+  const { data: stu, error } = await supabase.from("students").select("id, name, roll_no, person_id, class_id").eq("id", studentId).single();
+  if (error) throw error;
+  let rows = [stu];
+  if (stu.person_id) {
+    const { data } = await supabase.from("students").select("id, class_id").eq("person_id", stu.person_id);
+    if (data?.length) rows = data;
+  }
+  const classIds = rows.map((r) => r.class_id);
+  const idByClass = Object.fromEntries(rows.map((r) => [r.class_id, r.id]));
+  const [cls, att, perf, corr] = await Promise.all([
+    supabase.from("classes").select("id, name, subject").in("id", classIds),
+    supabase.from("attendance_records").select("class_id, date, present, is_day_off").in("class_id", classIds),
+    supabase.from("performance_records").select("id, class_id, title, test_type, max_marks, exam_date, created_at, marks, absent, concepts, concept_marks").in("class_id", classIds),
+    supabase.from("correction_records").select("id, class_id, type, date, marks").in("class_id", classIds),
+  ]);
+  for (const r of [cls, att, perf, corr]) if (r.error) throw r.error;
+  return {
+    student: stu, idByClass,
+    classes: cls.data || [], attendance: att.data || [], performance: perf.data || [], correction: corr.data || [],
+  };
+}
