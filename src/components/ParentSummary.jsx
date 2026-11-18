@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Printer } from "lucide-react";
 import Spinner from "./Spinner";
 import * as school from "../lib/school";
+import * as db from "../lib/db";
 
 const pctOf = (v, max) => (max ? Math.round((v / max) * 100) : 0);
 const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
@@ -17,7 +19,14 @@ function Bar({ pct, classPct, color }) {
   );
 }
 
-function compute(d) {
+function compute(raw, from, to) {
+  const inR = (x) => !!x && (!from || x >= from) && (!to || x <= to);
+  const d = {
+    ...raw,
+    attendance: raw.attendance.filter((a) => inR(a.date)),
+    performance: raw.performance.filter((r) => inR(dateOf(r))),
+    correction: raw.correction.filter((r) => inR(r.date)),
+  };
   const sid = (classId) => d.idByClass[classId];
   const subjectOf = (classId) => { const c = d.classes.find((x) => x.id === classId); return c?.subject || c?.name || "Subject"; };
 
@@ -64,12 +73,22 @@ function compute(d) {
   return { attendance, subjects, weak, strong, work };
 }
 
-export default function ParentSummary({ student, cls, onClose }) {
-  const [data, setData] = useState(null);
+function ParentSummaryInner({ student, cls, onClose }) {
+  const [raw, setRaw] = useState(null);
   const [error, setError] = useState(null);
+  const [terms, setTerms] = useState([]);
+  const [mode, setMode] = useState("all"); // all | term | custom
+  const [termId, setTermId] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   useEffect(() => {
-    school.fetchParentSummaryData(student.id).then((d) => setData(compute(d))).catch((e) => setError(e.message || "Couldn't load"));
+    school.fetchParentSummaryData(student.id).then(setRaw).catch((e) => setError(e.message || "Couldn't load"));
+    if (cls?.school_id) db.fetchTerms(cls.school_id).then(setTerms).catch(() => setTerms([]));
   }, [student.id]);
+  const data = useMemo(() => (raw ? compute(raw, from, to) : null), [raw, from, to]);
+  const chip = { background: "#F2790C", color: "#fff", borderColor: "transparent" };
+  const periodLabel = mode === "all" ? null
+    : `${mode === "term" && terms.find((t) => t.id === termId) ? `${terms.find((t) => t.id === termId).name}: ` : ""}${from || "start"} to ${to || "today"}`;
 
   const sec = { marginTop: 16 };
   const h = { fontSize: 12.5, fontWeight: 800, color: "#7a7266", textTransform: "uppercase", letterSpacing: "0.02em", marginBottom: 8 };
@@ -91,6 +110,25 @@ export default function ParentSummary({ student, cls, onClose }) {
           <div className="card-sub">{student.roll_no ? `Roll no. ${student.roll_no} - ` : ""}{cls?.name || ""} - Progress summary - {today}</div>
         </div>
 
+        {periodLabel && <div className="card-sub" style={{ marginTop: 4 }}>Period: {periodLabel}</div>}
+        <div className="ps-hide-print" style={{ marginTop: 10 }}>
+          <div className="field-label" style={{ margin: "0 0 6px" }}>Period (optional)</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <button type="button" className="chip-btn" style={mode === "all" ? chip : undefined}
+              onClick={() => { setMode("all"); setFrom(""); setTo(""); }}>All time</button>
+            {terms.map((t) => (
+              <button key={t.id} type="button" className="chip-btn" style={mode === "term" && termId === t.id ? chip : undefined}
+                onClick={() => { setMode("term"); setTermId(t.id); setFrom(t.start_date); setTo(t.end_date); }}>{t.name}</button>
+            ))}
+            <button type="button" className="chip-btn" style={mode === "custom" ? chip : undefined} onClick={() => setMode("custom")}>Custom dates</button>
+          </div>
+          {mode === "custom" && (
+            <div className="row-2" style={{ marginTop: 8 }}>
+              <div><div className="field-label" style={{ margin: "0 0 4px" }}>From</div><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+              <div><div className="field-label" style={{ margin: "0 0 4px" }}>To</div><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+            </div>
+          )}
+        </div>
         {error && <div className="auth-error">{error}</div>}
         {!data && !error && <Spinner label="Preparing summary..." />}
         {data && (
@@ -158,4 +196,9 @@ export default function ParentSummary({ student, cls, onClose }) {
       </div>
     </div>
   );
+}
+
+
+export default function ParentSummary(props) {
+  return createPortal(<div className="ps-portal"><ParentSummaryInner {...props} /></div>, document.body);
 }
