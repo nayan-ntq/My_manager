@@ -536,11 +536,13 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .concept-student-header-label { font-size: 12.5px; font-weight: 700; color: #7a7266; }
 
 
+
 /* parent summary printing */
 @media print {
-  body * { visibility: hidden; }
-  .ps-print, .ps-print * { visibility: visible; }
+  #root { display: none !important; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+  .ps-portal .overlay { position: static !important; display: block !important; background: none !important; backdrop-filter: none !important; }
+  .ps-portal .sheet { max-height: none !important; overflow: visible !important; border-radius: 0; padding: 0; max-width: none; width: 100%; }
   .ps-hide-print { display: none !important; }
-  .overlay { position: absolute !important; inset: auto !important; background: none !important; backdrop-filter: none !important; display: block !important; }
-  .ps-print { position: absolute; left: 0; top: 0; width: 100%; max-width: none; max-height: none !important; overflow: visible !important; border-radius: 0; padding: 0; }
+  .ps-portal, .ps-portal * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
