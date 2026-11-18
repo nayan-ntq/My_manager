@@ -6,6 +6,7 @@ import * as school from "../lib/school";
 import Spinner from "./Spinner";
 import StudentRemarks from "./StudentRemarks";
 import { CORRECTION_TITLES, CORRECTION_CONCEPT_TITLES, HOMEWORK_QUALITY_TITLES } from "../lib/constants";
+import ParentSummary from "./ParentSummary";
 
 const SKILLS = [
   { key: "accurate", label: "Accurate", color: "#2FA88F" },
@@ -37,6 +38,7 @@ export default function StudentProfile({ student, cls, showTeacherName, onClose 
   const [histFilter, setHistFilter] = useState("all");
   const [openRow, setOpenRow] = useState(null);
   const [showAllConcepts, setShowAllConcepts] = useState(false);
+  const [showParentSummary, setShowParentSummary] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -155,6 +157,8 @@ export default function StudentProfile({ student, cls, showTeacherName, onClose 
           <h2 className="sheet-title">{student.name}</h2>
           <button type="button" className="btn btn-icon" onClick={onClose}><X size={16} /></button>
         </div>
+        <button type="button" className="chip-btn" style={{ margin: "8px 0" }} onClick={() => setShowParentSummary(true)}>Parent summary</button>
+{showParentSummary && <ParentSummary student={student} cls={cls} onClose={() => setShowParentSummary(false)} />}
         <div className="card-sub" style={{ marginBottom: 10 }}>
           {student.roll_no ? `Roll no. ${student.roll_no} - ` : ""}{cls.name}{showTeacherName ? ` - ${cls.ownerName || "another teacher"}` : ""}
         </div>
