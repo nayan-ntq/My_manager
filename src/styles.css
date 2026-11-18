@@ -534,3 +534,13 @@ body { margin: 0; background: #FAF8F5; color: #33302B; font-family: 'Inter', san
 .concept-student-header { margin-top: 10px; padding: 10px 12px; background: #FAF8F5; border: 1px solid #ECE6DE; border-radius: 12px; }
 .concept-student-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .concept-student-header-label { font-size: 12.5px; font-weight: 700; color: #7a7266; }
+
+
+/* parent summary printing */
+@media print {
+  body * { visibility: hidden; }
+  .ps-print, .ps-print * { visibility: visible; }
+  .ps-hide-print { display: none !important; }
+  .overlay { position: absolute !important; inset: auto !important; background: none !important; backdrop-filter: none !important; display: block !important; }
+  .ps-print { position: absolute; left: 0; top: 0; width: 100%; max-width: none; max-height: none !important; overflow: visible !important; border-radius: 0; padding: 0; }
+}
