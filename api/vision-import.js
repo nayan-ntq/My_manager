@@ -107,12 +107,22 @@ function httpError(message, status) {
   return e;
 }
 
+async function fetchTimeout(url, opts, ms = 25000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctl.signal }); }
+  catch (e) {
+    if (e.name === "AbortError") throw httpError("The AI took too long to answer", 408);
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
 async function callGemini(apiKey, imageList, mimeType, prompt, isJson) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const imageParts = imageList.map((img) => ({ inline_data: { mime_type: mimeType || "image/jpeg", data: rawBase64(img) } }));
   const body = { contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }] };
   if (isJson) body.generationConfig = { responseMimeType: "application/json" };
-  const res = await fetch(url, {
+  const res = await fetchTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify(body),
@@ -130,7 +140,7 @@ async function callClaude(apiKey, imageList, mimeType, prompt) {
     ...imageList.map((img) => ({ type: "image", source: { type: "base64", media_type: mimeType || "image/jpeg", data: rawBase64(img) } })),
     { type: "text", text: prompt },
   ];
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: "user", content }] }),
