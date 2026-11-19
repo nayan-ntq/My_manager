@@ -6,17 +6,39 @@ import { compressForOCR } from "./images";
  * (planner, workout) or { csv } for list kinds (roster, correction,
  * performance, timetable).
  */
-export async function visionImport(files, kind, context) {
-  const fileArray = Array.isArray(files) ? files : [files];
-  const images = await Promise.all(fileArray.map((f) => compressForOCR(f)));
+async function importOne(image, kind, context) {
   const res = await fetch("/api/vision-import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ images, mimeType: "image/jpeg", kind, context }),
+    body: JSON.stringify({ images: [image], mimeType: "image/jpeg", kind, context }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Import failed (${res.status})`);
   return body;
+}
+
+export async function visionImport(files, kind, context) {
+  const fileArray = Array.isArray(files) ? files : [files];
+  const images = await Promise.all(fileArray.map((f) => compressForOCR(f)));
+
+  // one photo per request, two at a time: each request is small and stays well under the time limit
+  const results = [];
+  for (let i = 0; i < images.length; i += 2) {
+    const batch = images.slice(i, i + 2);
+    const settled = await Promise.allSettled(batch.map((img) => importOne(img, kind, context)));
+    settled.forEach((s, j) => {
+      if (s.status === "rejected") throw new Error(`Photo ${i + j + 1}: ${s.reason?.message || "failed"}`);
+      results.push(s.value);
+    });
+  }
+
+  if (results.length === 1) return results[0];
+  if (results[0].csv !== undefined) {
+    const [first, ...rest] = results.map((r) => r.csv);
+    return { csv: [first, ...rest.map((c) => c.split(/\r?\n/).slice(1).join("\n"))].filter(Boolean).join("\n") };
+  }
+  if (kind === "workout") return { data: { exercises: results.flatMap((r) => r.data?.exercises || []) } };
+  return { data: { entries: results.flatMap((r) => r.data?.entries || (r.data ? [r.data] : [])) } };
 }
 
 /** Minimal CSV parser \u2014 handles quoted fields with commas, good enough for Gemini's own CSV output. */
