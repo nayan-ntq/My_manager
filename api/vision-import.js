@@ -107,7 +107,7 @@ function httpError(message, status) {
   return e;
 }
 
-async function fetchTimeout(url, opts, ms = 25000) {
+async function fetchTimeout(url, opts, ms = 150000) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   try { return await fetch(url, { ...opts, signal: ctl.signal }); }
@@ -121,7 +121,11 @@ async function callGemini(apiKey, imageList, mimeType, prompt, isJson) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const imageParts = imageList.map((img) => ({ inline_data: { mime_type: mimeType || "image/jpeg", data: rawBase64(img) } }));
   const body = { contents: [{ role: "user", parts: [...imageParts, { text: prompt }] }] };
-  if (isJson) body.generationConfig = { responseMimeType: "application/json" };
+  body.generationConfig = {
+    ...(isJson ? { responseMimeType: "application/json" } : {}),
+    thinkingConfig: { thinkingBudget: 0 },
+    maxOutputTokens: 6000,
+  };
   const res = await fetchTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
