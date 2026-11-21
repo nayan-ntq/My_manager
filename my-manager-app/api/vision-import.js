@@ -6,7 +6,7 @@
 // timetable) come back as CSV text so the teacher can review/edit before
 // anything is written to the database.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 const PROMPTS = {
   planner: (ctx) => `Read these photo(s) of one or more lesson planner pages - they may cover a single
