@@ -189,11 +189,22 @@ async function readWithFallback(imageList, mimeType, prompt, isJson) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "GET") {
+    const key = process.env.GEMINI_API_KEY;
+    const t0 = Date.now();
+    try {
+      if (!key) throw new Error("GEMINI_API_KEY is not set in Vercel");
+      const out = await callGemini(key, [], "image/jpeg", "Reply with the single word OK", false);
+      res.status(200).json({ ok: true, model: GEMINI_MODEL, ms: Date.now() - t0, reply: out.slice(0, 40) });
+    } catch (err) {
+      res.status(200).json({ ok: false, model: GEMINI_MODEL, ms: Date.now() - t0, error: err.message });
+    }
+    return;
+  }
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-
   const { image, images, mimeType, kind, context } = req.body || {};
   const imageList = (images && images.length ? images : image ? [image] : []).slice(0, MAX_IMAGES);
   if (!imageList.length || !PROMPTS[kind]) {
